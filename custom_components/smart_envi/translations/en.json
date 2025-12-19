@@ -29,7 +29,8 @@
         "description": "Choose what you want to configure.",
         "menu_options": {
           "integration": "Integration Settings (Scan Interval, API Timeout)",
-          "schedule": "Edit Device Schedule"
+          "schedule": "Edit Device Schedule",
+          "manage_schedules": "Manage All Schedules"
         }
       },
       "integration_options": {
@@ -66,6 +67,26 @@
           "enabled": "Turn the schedule on or off. When disabled, the schedule will not run and the heater will maintain its current setting.",
           "name": "Optional name for this schedule (e.g., 'Weekday Schedule', 'Weekend Schedule').",
           "time_entries": "Schedule time entries in format: HH:MM:SS,temperature,enabled\n\nSeparate multiple entries with | (pipe character)\nTemperature range: 50-86°F\nEnabled: true or false\n\n📋 EXAMPLES:\n• Single entry: 08:00:00,72,true\n• Two entries: 08:00:00,72,true|18:00:00,68,true\n\n📅 SAMPLE SCHEDULES:\n• Morning/Evening:\n  07:00:00,72,true|22:00:00,68,true\n\n• Work Day (away during day):\n  06:00:00,70,true|08:00:00,62,true|17:00:00,70,true|22:00:00,65,true\n\n• Weekend (sleep in):\n  08:00:00,70,true|23:00:00,68,true\n\n• All Day Comfort:\n  00:00:00,70,true"
+        }
+      },
+      "list_schedules": {
+        "title": "Manage All Schedules",
+        "description": "View and edit all schedules from your Envi account. Select a schedule to edit or delete it.",
+        "data": {
+          "schedule_id": "Select Schedule"
+        },
+        "data_description": {
+          "schedule_id": "Choose a schedule to view, edit, or delete. Schedules show enabled (✓) or disabled (✗) status along with the device name."
+        }
+      },
+      "view_schedule": {
+        "title": "Schedule Details",
+        "description": "Schedule: {schedule_name} for {device_name}. Status: {enabled}. {time_count} time entries.",
+        "data": {
+          "action": "Action"
+        },
+        "data_description": {
+          "action": "Choose to edit or delete this schedule."
         }
       }
     },
