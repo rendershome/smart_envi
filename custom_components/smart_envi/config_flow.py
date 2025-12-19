@@ -707,8 +707,11 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         title="",
                         data=self.config_entry.options or {},
                     )
+                except (EnviApiError, EnviDeviceError) as e:
+                    _LOGGER.error("Failed to delete schedule: %s", e)
+                    errors["base"] = "failed_to_delete_schedule"
                 except Exception as e:
-                    _LOGGER.error("Failed to delete schedule: %s", e, exc_info=True)
+                    _LOGGER.exception("Unexpected error deleting schedule")
                     errors["base"] = "failed_to_delete_schedule"
             
             elif action == "edit":
