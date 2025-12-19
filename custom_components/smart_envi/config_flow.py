@@ -191,7 +191,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Required(
                             "scan_interval",
                             default=current_scan_interval,
-                            description="\n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
+                            description="\n\n\nHow often to check for device updates.\n\nDefault: 30 seconds\nRange: 10-300 seconds\n\nLower = more frequent updates but higher API usage\nHigher = less API usage but slower response",
                         ): vol.All(
                             vol.Coerce(int),
                             vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
