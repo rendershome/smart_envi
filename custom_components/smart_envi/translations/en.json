@@ -29,8 +29,7 @@
         "description": "Choose what you want to configure.",
         "menu_options": {
           "integration": "Integration Settings (Scan Interval, API Timeout)",
-          "schedule": "Edit Device Schedule",
-          "manage_schedules": "Manage All Schedules"
+          "schedules": "Manage Schedules"
         }
       },
       "integration_options": {
@@ -53,6 +52,16 @@
         },
         "data_description": {
           "entity_id": "Select the Smart Envi heater whose schedule you want to edit."
+        }
+      },
+      "schedule_options": {
+        "title": "Manage Schedules",
+        "description": "Choose how you want to manage schedules.",
+        "data": {
+          "schedule_type": "Schedule Management Type"
+        },
+        "data_description": {
+          "schedule_type": "Choose how you want to manage schedules:\n• Device Schedule: Edit schedule for a specific heater\n• All Schedules: View and manage all schedules from your account"
         }
       },
       "edit_schedule": {

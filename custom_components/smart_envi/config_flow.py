@@ -95,8 +95,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             menu_options={
                 "integration": "Integration Settings (Scan Interval, API Timeout)",
-                "schedule": "Edit Device Schedule",
-                "manage_schedules": "Manage All Schedules",
+                "schedules": "Manage Schedules",
             },
         )
     
@@ -104,13 +103,31 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle integration menu selection - redirect to integration_options."""
         return await self.async_step_integration_options(user_input)
     
-    async def async_step_schedule(self, user_input: dict | None = None) -> FlowResult:
-        """Handle schedule menu selection - redirect to select_device."""
-        return await self.async_step_select_device(user_input)
+    async def async_step_schedules(self, user_input: dict | None = None) -> FlowResult:
+        """Handle schedules menu selection - show options for device-specific or all schedules."""
+        return await self.async_step_schedule_options(user_input)
     
-    async def async_step_manage_schedules(self, user_input: dict | None = None) -> FlowResult:
-        """Handle manage schedules menu selection - redirect to list_schedules."""
-        return await self.async_step_list_schedules(user_input)
+    async def async_step_schedule_options(self, user_input: dict | None = None) -> FlowResult:
+        """Show options for schedule management: device-specific or all schedules."""
+        if user_input is not None:
+            schedule_type = user_input.get("schedule_type")
+            if schedule_type == "device":
+                return await self.async_step_select_device(user_input)
+            elif schedule_type == "all":
+                return await self.async_step_list_schedules(user_input)
+        
+        return self.async_show_form(
+            step_id="schedule_options",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "schedule_type",
+                    description="\n\nChoose how you want to manage schedules:\n• Device Schedule: Edit schedule for a specific heater\n• All Schedules: View and manage all schedules from your account",
+                ): vol.In({
+                    "device": "Edit Schedule for a Specific Device",
+                    "all": "View and Manage All Schedules",
+                }),
+            }),
+        )
 
     async def async_step_integration_options(self, user_input: dict | None = None) -> FlowResult:
         """Manage integration options (scan interval, API timeout)."""
@@ -174,7 +191,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Required(
                             "scan_interval",
                             default=current_scan_interval,
-                            description="How often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
+                            description="\n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
                         ): vol.All(
                             vol.Coerce(int),
                             vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
@@ -182,7 +199,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Required(
                             "api_timeout",
                             default=current_api_timeout,
-                            description="Maximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
+                            description="\n\nMaximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
                         ): vol.All(
                             vol.Coerce(int),
                             vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
@@ -200,7 +217,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(
                         "scan_interval",
                         default=DEFAULT_SCAN_INTERVAL,
-                        description="How often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
+                        description="\n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower = more frequent updates but higher API usage. Higher = less API usage but slower response.",
                     ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
@@ -208,7 +225,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(
                         "api_timeout",
                         default=DEFAULT_API_TIMEOUT,
-                        description="Maximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
+                        description="\n\nMaximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
                     ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
@@ -444,17 +461,17 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     "enabled",
                     default=current_schedule.get("enabled", False),
-                    description="Turn the schedule on or off. When disabled, the schedule will not run.",
+                    description="\n\nTurn the schedule on or off. When disabled, the schedule will not run.",
                 ): bool,
                 vol.Optional(
                     "name",
                     default=current_schedule.get("name", ""),
-                    description="Optional name for this schedule (e.g., 'Weekday Schedule', 'Weekend Schedule').",
+                    description="\n\nOptional name for this schedule (e.g., 'Weekday Schedule', 'Weekend Schedule').",
                 ): str,
                 vol.Optional(
                     "time_entries",
                     default=time_entries_str,
-                    description="Format: HH:MM:SS,temperature,enabled. Separate multiple entries with | (pipe). Temperature: 50-86°F. Example: 08:00:00,72,true|18:00:00,68,true",
+                    description="\n\nFormat: HH:MM:SS,temperature,enabled. Separate multiple entries with | (pipe). Temperature: 50-86°F. Example: 08:00:00,72,true|18:00:00,68,true",
                 ): str,
             }),
             errors=errors,
@@ -533,7 +550,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required(
                     "schedule_id",
-                    description="Select a schedule to view or edit. Schedules show enabled (✓) or disabled (✗) status.",
+                    description="\n\nSelect a schedule to view or edit. Schedules show enabled (✓) or disabled (✗) status.",
                 ): vol.In(schedule_options),
             }),
             errors=errors,
@@ -638,7 +655,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required(
                     "action",
-                    description=f"Schedule: {current_schedule.get('name', 'Unnamed')} for {device_name}. Choose an action.",
+                    description=f"\n\nSchedule: {current_schedule.get('name', 'Unnamed')} for {device_name}. Choose an action.",
                 ): vol.In({
                     "edit": "Edit Schedule",
                     "delete": "Delete Schedule",
