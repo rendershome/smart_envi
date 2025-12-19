@@ -87,6 +87,66 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         self._entity_id: str | None = None
         self._schedule_id: int | None = None
         self._all_schedules: list[dict] = []
+    
+    def _parse_time_entries(self, time_entries_str: str) -> tuple[list[dict], dict[str, str]]:
+        """Parse time entries string into structured list.
+        
+        Args:
+            time_entries_str: Pipe-delimited string of entries in format "HH:MM:SS,temp,enabled"
+            
+        Returns:
+            Tuple of (parsed_times_list, errors_dict)
+        """
+        times = []
+        errors = {}
+        
+        if not time_entries_str.strip():
+            return times, errors
+        
+        for entry_str in time_entries_str.split("|"):
+            entry_str = entry_str.strip()
+            if not entry_str:
+                continue
+            
+            parts = entry_str.split(",")
+            if len(parts) < 2:
+                errors["time_entries"] = f"Invalid format in entry '{entry_str}'. Use: HH:MM:SS,temp,enabled"
+                continue
+            
+            time_str = parts[0].strip()
+            try:
+                temp = float(parts[1].strip())
+                enabled = parts[2].strip().lower() == "true" if len(parts) > 2 else True
+            except (ValueError, IndexError):
+                errors["time_entries"] = f"Invalid format in entry '{entry_str}'. Use: HH:MM:SS,temp,enabled"
+                continue
+            
+            # Validate time format
+            try:
+                time_parts = time_str.split(":")
+                if len(time_parts) == 2:
+                    time_str = f"{time_str}:00"
+                elif len(time_parts) != 3:
+                    raise ValueError("Invalid time format")
+                # Validate each part is numeric
+                for part in time_str.split(":"):
+                    int(part)
+            except (ValueError, TypeError):
+                errors["time_entries"] = f"Invalid time format: {time_str}. Use HH:MM:SS"
+                continue
+            
+            # Validate temperature
+            if temp < MIN_TEMPERATURE or temp > MAX_TEMPERATURE:
+                errors["time_entries"] = f"Temperature {temp} must be between {MIN_TEMPERATURE} and {MAX_TEMPERATURE}°F"
+                continue
+            
+            times.append({
+                "time": time_str,
+                "temperature": temp,
+                "enabled": enabled,
+            })
+        
+        return times, errors
 
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         """Show menu to choose between integration options and schedule editing."""
@@ -134,105 +194,58 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         _LOGGER.debug("Integration options step called, user_input: %s", user_input)
         errors: dict[str, str] = {}
         
+        if user_input is not None:
+            # Validation is handled by vol.Schema with vol.Coerce and vol.Range
+            # If we reach here, input is valid
+            return self.async_create_entry(
+                title="",
+                data={
+                    "scan_interval": user_input["scan_interval"],
+                    "api_timeout": user_input["api_timeout"],
+                },
+            )
+
+        # Get current values from config entry
+        options = self.config_entry.options or {}
+        current_scan_interval = options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+        current_api_timeout = options.get("api_timeout", DEFAULT_API_TIMEOUT)
+        
+        # Ensure values are integers for defaults
         try:
-            if user_input is not None:
-                # Validate scan interval
-                scan_interval = user_input.get("scan_interval", DEFAULT_SCAN_INTERVAL)
-                try:
-                    scan_interval = int(scan_interval)
-                except (ValueError, TypeError):
-                    errors["scan_interval"] = "Scan interval must be a number"
-                
-                if not errors.get("scan_interval"):
-                    if scan_interval < MIN_SCAN_INTERVAL or scan_interval > MAX_SCAN_INTERVAL:
-                        errors["scan_interval"] = f"Scan interval must be between {MIN_SCAN_INTERVAL} and {MAX_SCAN_INTERVAL} seconds"
-                
-                # Validate API timeout
-                api_timeout = user_input.get("api_timeout", DEFAULT_API_TIMEOUT)
-                try:
-                    api_timeout = int(api_timeout)
-                except (ValueError, TypeError):
-                    errors["api_timeout"] = "API timeout must be a number"
-                
-                if not errors.get("api_timeout"):
-                    if api_timeout < MIN_API_TIMEOUT or api_timeout > MAX_API_TIMEOUT:
-                        errors["api_timeout"] = f"API timeout must be between {MIN_API_TIMEOUT} and {MAX_API_TIMEOUT} seconds"
+            current_scan_interval = int(current_scan_interval)
+        except (ValueError, TypeError):
+            current_scan_interval = DEFAULT_SCAN_INTERVAL
+        
+        try:
+            current_api_timeout = int(current_api_timeout)
+        except (ValueError, TypeError):
+            current_api_timeout = DEFAULT_API_TIMEOUT
 
-                if not errors:
-                    # Store options
-                    return self.async_create_entry(
-                        title="",
-                        data={
-                            "scan_interval": scan_interval,
-                            "api_timeout": api_timeout,
-                        },
-                    )
-
-            # Get current values from config entry
-            options = self.config_entry.options or {}
-            current_scan_interval = options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
-            current_api_timeout = options.get("api_timeout", DEFAULT_API_TIMEOUT)
-            
-            # Ensure values are integers
-            try:
-                current_scan_interval = int(current_scan_interval)
-            except (ValueError, TypeError):
-                current_scan_interval = DEFAULT_SCAN_INTERVAL
-            
-            try:
-                current_api_timeout = int(current_api_timeout)
-            except (ValueError, TypeError):
-                current_api_timeout = DEFAULT_API_TIMEOUT
-
-            return self.async_show_form(
-                step_id="integration_options",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            "scan_interval",
-                            default=current_scan_interval,
-                            description=" \n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower values = more frequent updates but higher API usage. Higher values = less API usage but slower response.",
-                        ): vol.All(
-                            vol.Coerce(int),
-                            vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
-                        ),
-                        vol.Required(
-                            "api_timeout",
-                            default=current_api_timeout,
-                            description=" \n\nMaximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
-                        ): vol.All(
-                            vol.Coerce(int),
-                            vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
-                        ),
-                    }
-                ),
-                errors=errors,
-            )
-        except Exception as err:
-            _LOGGER.exception("Error in integration options flow: %s", err)
-            errors["base"] = "unknown"
-            return self.async_show_form(
-                step_id="integration_options",
-                data_schema=vol.Schema({
-                    vol.Required(
-                        "scan_interval",
-                        default=DEFAULT_SCAN_INTERVAL,
-                        description=" \n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower values = more frequent updates but higher API usage. Higher values = less API usage but slower response.",
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
-                    ),
-                    vol.Required(
-                        "api_timeout",
-                        default=DEFAULT_API_TIMEOUT,
-                        description=" \n\nMaximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
-                    ),
-                }),
-                errors=errors,
-            )
+        # Build schema once
+        data_schema = vol.Schema({
+            vol.Required(
+                "scan_interval",
+                default=current_scan_interval,
+                description=" \n\nHow often to check for device updates. Default: 30 seconds. Range: 10-300 seconds. Lower values = more frequent updates but higher API usage. Higher values = less API usage but slower response.",
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+            ),
+            vol.Required(
+                "api_timeout",
+                default=current_api_timeout,
+                description=" \n\nMaximum time to wait for API responses. Default: 15 seconds. Range: 5-60 seconds. Increase for slow internet, decrease for faster failure detection.",
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_API_TIMEOUT, max=MAX_API_TIMEOUT),
+            ),
+        })
+        
+        return self.async_show_form(
+            step_id="integration_options",
+            data_schema=data_schema,
+            errors=errors,
+        )
 
     async def async_step_select_device(self, user_input: dict | None = None) -> FlowResult:
         """Select device to edit schedule."""
@@ -256,12 +269,14 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     errors["base"] = "entity_not_found"
         
-        # Get all Smart Envi climate entities
+        # Get Smart Envi climate entities for this config entry
         registry = entity_registry.async_get(self.hass)
         climate_entities = []
         
-        for entity_id, entry in registry.entities.items():
-            if entry.domain == "climate" and entry.platform == DOMAIN:
+        # Use async_entries_for_config_entry for better performance
+        for entry in entity_registry.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            if entry.domain == "climate":
+                entity_id = entry.entity_id
                 state = self.hass.states.get(entity_id)
                 if state:
                     friendly_name = state.attributes.get("friendly_name", entity_id)
@@ -382,49 +397,9 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                 
                 # Parse time entries from structured text input
                 # Format: "HH:MM:SS,temp,enabled|HH:MM:SS,temp,enabled"
-                times = []
                 time_entries_str = user_input.get("time_entries", "").strip()
-                
-                if time_entries_str:
-                    for entry_str in time_entries_str.split("|"):
-                        entry_str = entry_str.strip()
-                        if not entry_str:
-                            continue
-                        
-                        parts = entry_str.split(",")
-                        if len(parts) >= 2:
-                            time_str = parts[0].strip()
-                            try:
-                                temp = float(parts[1].strip())
-                                enabled = parts[2].strip().lower() == "true" if len(parts) > 2 else True
-                            except (ValueError, IndexError):
-                                errors["time_entries"] = f"Invalid format in entry '{entry_str}'. Use: HH:MM:SS,temp,enabled"
-                                continue
-                            
-                            # Validate time format
-                            try:
-                                time_parts = time_str.split(":")
-                                if len(time_parts) == 2:
-                                    time_str = f"{time_str}:00"
-                                elif len(time_parts) != 3:
-                                    raise ValueError("Invalid time format")
-                                # Validate each part is numeric
-                                for part in time_str.split(":"):
-                                    int(part)
-                            except (ValueError, TypeError):
-                                errors["time_entries"] = f"Invalid time format: {time_str}. Use HH:MM:SS"
-                                continue
-                            
-                            # Validate temperature
-                            if temp < MIN_TEMPERATURE or temp > MAX_TEMPERATURE:
-                                errors["time_entries"] = f"Temperature {temp} must be between {MIN_TEMPERATURE} and {MAX_TEMPERATURE}°F"
-                                continue
-                            
-                            times.append({
-                                "time": time_str,
-                                "temperature": temp,
-                                "enabled": enabled,
-                            })
+                times, parse_errors = self._parse_time_entries(time_entries_str)
+                errors.update(parse_errors)
                 
                 if not errors:
                     schedule_data["times"] = times
@@ -554,10 +529,11 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         schedule_options = {}
         device_map = {}  # Map device_id to entity name
         
-        # Get device names from entity registry
+        # Get device names from entity registry for this config entry
         registry = entity_registry.async_get(self.hass)
-        for entity_id, entry in registry.entities.items():
-            if entry.domain == "climate" and entry.platform == DOMAIN:
+        for entry in entity_registry.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            if entry.domain == "climate":
+                entity_id = entry.entity_id
                 unique_id = entry.unique_id
                 if unique_id.startswith(f"{DOMAIN}_"):
                     device_id = unique_id.replace(f"{DOMAIN}_", "", 1)
@@ -671,16 +647,17 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     time_parts.append(f"{time_str},{temp},{enabled}")
             time_entries_str = "|".join(time_parts)
         
-        # Get device name
+        # Get device name from entity registry for this config entry
         device_name = "Unknown Device"
         if self._device_id:
             registry = entity_registry.async_get(self.hass)
-            for entity_id, entry in registry.entities.items():
-                if entry.domain == "climate" and entry.platform == DOMAIN:
+            for entry in entity_registry.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+                if entry.domain == "climate":
                     unique_id = entry.unique_id
                     if unique_id.startswith(f"{DOMAIN}_"):
                         device_id = unique_id.replace(f"{DOMAIN}_", "", 1)
                         if device_id == self._device_id:
+                            entity_id = entry.entity_id
                             state = self.hass.states.get(entity_id)
                             if state:
                                 device_name = state.attributes.get("friendly_name", entity_id)

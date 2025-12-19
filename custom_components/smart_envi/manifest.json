@@ -10,5 +10,5 @@
   "version": "2.1.0-dev",
   "iot_class": "cloud_poll",
   "translations": ["en"],
-  "homeassistant": "2025.12.0"
+  "homeassistant": "2023.1.0"
 }
