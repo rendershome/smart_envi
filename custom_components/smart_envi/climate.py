@@ -70,23 +70,16 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         self.client = coordinator.client
         self.device_id = str(device_id)
         
-        # Get initial device data from coordinator
-        device_data = coordinator.get_device_data(device_id) or {}
-        
-        # Get device name from data if available
-        device_name = device_data.get("name", f"Smart Envi {device_id}")
-        self._attr_name = device_name
+        # Set defaults - will be updated by _update_from_coordinator
+        self._attr_name = f"Smart Envi {device_id}"
         self._attr_unique_id = f"{DOMAIN}_{device_id}"
-        
-        # Temperature unit handling
-        self._temperature_unit_api = device_data.get("temperature_unit", "F").upper()
-        
+        self._temperature_unit_api = "F"
         self._current_temperature = None
         self._target_temperature = None
         self._attr_hvac_mode = HVACMode.OFF
-        self._serial_no = device_data.get("serial_no")
-        self._firmware_version = device_data.get("firmware_version")
-        self._model_no = device_data.get("model_no")
+        self._serial_no = None
+        self._firmware_version = None
+        self._model_no = None
         
         # Update from coordinator data
         self._update_from_coordinator()
@@ -163,12 +156,35 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
             "schedule_active": data.get("is_schedule_active", False),
             "schedule_name": schedule_name,
             "schedule_temperature": schedule_temp,
-            "freeze_protect": not data.get("freeze_protect_setting", True),  # Inverted
-            "child_lock": not data.get("child_lock_setting", True),  # Inverted
+            "freeze_protect": self._parse_inverted_bool(data.get("freeze_protect_setting"), default_on=True),
+            "child_lock": self._parse_inverted_bool(data.get("child_lock_setting"), default_on=False),
             "hold": data.get("is_hold", False),
             "geofence_active": data.get("is_geofence_active", False),
             "last_update": data.get("device_status_res_at") or data.get("device_status_req_at"),
         }
+
+    def _parse_inverted_bool(self, value, default_on: bool = True) -> bool:
+        """Parse API boolean values with inverted semantics.
+        
+        API returns True when feature is OFF, False when ON.
+        
+        Args:
+            value: API value (bool, int, str, or None)
+            default_on: Default value if None or unexpected type
+            
+        Returns:
+            Inverted boolean (True = feature ON, False = feature OFF)
+        """
+        if value is None:
+            return default_on
+        if isinstance(value, bool):
+            return not value
+        if isinstance(value, (int, str)):
+            if value in (1, "true", "True", "1"):
+                return False
+            if value in (0, "false", "False", "0"):
+                return True
+        return not bool(value)
 
     @property
     def available(self) -> bool:

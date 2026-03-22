@@ -281,7 +281,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     _LOGGER.debug("Could not fetch full schedule details: %s", e)
                     # Continue with device state schedule info
             
-            _LOGGER.info("Retrieved schedule for %s: %s", entity_id, schedule_data)
+            _LOGGER.debug("Retrieved schedule for %s", entity_id)
             return schedule_data
         except EnviApiError as e:
             _LOGGER.error("API error getting schedule for %s: %s", entity_id, e, exc_info=True)
@@ -384,127 +384,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if not found_client:
             raise HomeAssistantError("No Smart Envi API clients found. Please configure the integration first.")
 
-
-    async def set_freeze_protect(call: ServiceCall) -> None:
-        """Enable or disable freeze protection.
-        
-        Note: This setting cannot be changed through the API and must be configured
-        through the Envi mobile app. This service will raise an error if called.
-        
-        Args:
-            call: Service call with entity_id and enabled flag
-            
-        Raises:
-            HomeAssistantError: Always raised with explanation that this setting
-                must be changed via the mobile app
-        """
-        entity_id = call.data.get(ATTR_ENTITY_ID)
-        enabled = call.data.get("enabled", True)
-        
-        if not entity_id:
-            raise HomeAssistantError("Entity ID is required")
-        
-        device_id = _get_device_id_from_entity(hass, entity_id)
-        if not device_id:
-            raise HomeAssistantError(f"Could not determine device_id for entity {entity_id}")
-        
-        client = _get_client_from_domain(hass)
-        if not client:
-            raise HomeAssistantError("Smart Envi integration not configured or API client unavailable")
-        
-        try:
-            await client.set_freeze_protect(device_id, enabled)
-        except EnviApiError as e:
-            # This will always raise since freeze protect cannot be changed via API
-            raise HomeAssistantError(
-                f"Freeze protection cannot be changed through Home Assistant. "
-                f"Please use the Envi mobile app to modify this setting. "
-                f"Original error: {e}"
-            ) from e
-        except Exception as e:
-            _LOGGER.error("Failed to set freeze protection: %s", e, exc_info=True)
-            raise HomeAssistantError(f"Failed to set freeze protection: {str(e)}") from e
-
-    async def set_child_lock(call: ServiceCall) -> None:
-        """Enable or disable child lock.
-        
-        Note: This setting cannot be changed through the API and must be configured
-        through the Envi mobile app. This service will raise an error if called.
-        
-        Args:
-            call: Service call with entity_id and enabled flag
-            
-        Raises:
-            HomeAssistantError: Always raised with explanation that this setting
-                must be changed via the mobile app
-        """
-        entity_id = call.data.get(ATTR_ENTITY_ID)
-        enabled = call.data.get("enabled", True)
-        
-        if not entity_id:
-            raise HomeAssistantError("Entity ID is required")
-        
-        device_id = _get_device_id_from_entity(hass, entity_id)
-        if not device_id:
-            raise HomeAssistantError(f"Could not determine device_id for entity {entity_id}")
-        
-        client = _get_client_from_domain(hass)
-        if not client:
-            raise HomeAssistantError("Smart Envi integration not configured or API client unavailable")
-        
-        try:
-            await client.set_child_lock(device_id, enabled)
-        except EnviApiError as e:
-            # This will always raise since child lock cannot be changed via API
-            raise HomeAssistantError(
-                f"Child lock cannot be changed through Home Assistant. "
-                f"Please use the Envi mobile app to modify this setting. "
-                f"Original error: {e}"
-            ) from e
-        except Exception as e:
-            _LOGGER.error("Failed to set child lock: %s", e, exc_info=True)
-            raise HomeAssistantError(f"Failed to set child lock: {str(e)}") from e
-
-    async def set_hold(call: ServiceCall) -> None:
-        """Set temporary hold (prevents schedule changes).
-        
-        Note: This setting cannot be changed through the API and must be configured
-        through the Envi mobile app. This service will raise an error if called.
-        
-        Args:
-            call: Service call with entity_id and enabled flag
-            
-        Raises:
-            HomeAssistantError: Always raised with explanation that this setting
-                must be changed via the mobile app
-        """
-        entity_id = call.data.get(ATTR_ENTITY_ID)
-        enabled = call.data.get("enabled", True)
-        
-        if not entity_id:
-            raise HomeAssistantError("Entity ID is required")
-        
-        device_id = _get_device_id_from_entity(hass, entity_id)
-        if not device_id:
-            raise HomeAssistantError(f"Could not determine device_id for entity {entity_id}")
-        
-        client = _get_client_from_domain(hass)
-        if not client:
-            raise HomeAssistantError("Smart Envi integration not configured or API client unavailable")
-        
-        try:
-            await client.set_hold(device_id, enabled)
-        except EnviApiError as e:
-            # This will always raise since hold cannot be changed via API
-            raise HomeAssistantError(
-                f"Hold setting cannot be changed through Home Assistant. "
-                f"Please use the Envi mobile app to modify this setting. "
-                f"Original error: {e}"
-            ) from e
-        except Exception as e:
-            _LOGGER.error("Failed to set hold: %s", e, exc_info=True)
-            raise HomeAssistantError(f"Failed to set hold: {str(e)}") from e
-
     # Register all services
     hass.services.async_register(
         DOMAIN,
@@ -556,36 +435,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         test_connection,
         schema=vol.Schema({}),
     )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "set_freeze_protect",
-        set_freeze_protect,
-        schema=vol.Schema({
-            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-            vol.Required("enabled"): cv.boolean,
-        }),
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "set_child_lock",
-        set_child_lock,
-        schema=vol.Schema({
-            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-            vol.Required("enabled"): cv.boolean,
-        }),
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "set_hold",
-        set_hold,
-        schema=vol.Schema({
-            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-            vol.Required("enabled"): cv.boolean,
-        }),
-    )
 
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Unload custom services."""
@@ -594,6 +443,3 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, "get_schedule")
     hass.services.async_remove(DOMAIN, "get_status")
     hass.services.async_remove(DOMAIN, "test_connection")
-    hass.services.async_remove(DOMAIN, "set_freeze_protect")
-    hass.services.async_remove(DOMAIN, "set_child_lock")
-    hass.services.async_remove(DOMAIN, "set_hold")

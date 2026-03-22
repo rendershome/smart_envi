@@ -42,16 +42,6 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
         self._device_name = device_name
         self._attr_unique_id = f"{DOMAIN}_{device_id}_{sensor_type}"
         self._attr_name = f"{device_name} {self._get_sensor_name()}"
-        
-        # Try to set initial unit for schedule temperature sensor
-        if sensor_type == "schedule_temperature":
-            initial_data = coordinator.get_device_data(device_id)
-            if initial_data:
-                temp_unit = initial_data.get("temperature_unit", "F").upper()
-                if temp_unit == "C":
-                    self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-                else:
-                    self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def _get_sensor_name(self) -> str:
         """Get human-readable sensor name."""
@@ -265,14 +255,6 @@ class EnviScheduleTemperatureSensor(EnviSensor):
                     # Keep temperature in device's native unit (no conversion)
                     # The API already returns it in the correct unit
                     self._attr_native_value = float(temp)
-                    _LOGGER.debug(
-                        "Schedule temperature for %s: %s %s (device unit: %s, native_unit: %s)",
-                        self.device_id,
-                        self._attr_native_value,
-                        self._attr_native_unit_of_measurement,
-                        temp_unit,
-                        self._attr_native_unit_of_measurement
-                    )
                 else:
                     self._attr_native_value = None
             else:

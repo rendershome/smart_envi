@@ -88,11 +88,14 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
             for i, device_id in enumerate(device_ids):
                 result = results[i]
                 if isinstance(result, Exception):
-                    failed_devices.append((device_id, str(result)))
+                    exc_type = type(result).__name__
+                    exc_msg = str(result)
+                    failed_devices.append((device_id, exc_type, exc_msg))
                     _LOGGER.warning(
-                        "Error fetching device %s: %s. Keeping cached data if available.",
+                        "Error fetching device %s: %s: %s. Keeping cached data if available.",
                         device_id,
-                        result,
+                        exc_type,
+                        exc_msg,
                     )
                     # Keep previous data if available (graceful degradation)
                     if device_id in self.device_data:

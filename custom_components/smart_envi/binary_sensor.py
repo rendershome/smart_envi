@@ -39,7 +39,16 @@ class EnviBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def _parse_inverted_bool(self, value, default_on: bool = True) -> bool:
         """Parse API boolean values with inverted semantics.
         
-        API returns True when feature is OFF, False when ON.
+        The Envi API uses inverted boolean semantics for some settings:
+        - API returns True (or 1, "true", "1") when feature is OFF
+        - API returns False (or 0, "false", "0") when feature is ON
+        
+        Truth table:
+        | API Value | Meaning    | Return Value | Display    |
+        |-----------|------------|--------------|------------|
+        | True/1    | Feature OFF| False        | OFF        |
+        | False/0   | Feature ON | True         | ON         |
+        | None      | Unknown    | default_on   | default_on |
         
         Args:
             value: API value (bool, int, str, or None)

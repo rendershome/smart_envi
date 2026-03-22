@@ -25,7 +25,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import EnviApiClient, EnviAuthenticationError
 from .const import DOMAIN, SCAN_INTERVAL
 from .coordinator import EnviDataUpdateCoordinator
-from .services import async_setup_services
+from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,6 +103,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN].pop(coordinator_key, None)
         # Clean up client
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        # If no more entries, unload services and remove domain
         if not hass.data[DOMAIN]:
+            hass.data[DOMAIN].pop("services_setup", None)
+            await async_unload_services(hass)
             hass.data.pop(DOMAIN, None)
     return unload_ok
