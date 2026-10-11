@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Create the dev virtualenv with Python 3.13 and install the dev requirements.
+set -e
+cd "$(dirname "$0")/.."
+VENV="${VENV:-$HOME/.venvs/smart_envi}"  # outside the repo (it is synced to Google Drive)
+
+uv venv --python 3.13 --allow-existing "$VENV"
+uv pip install --python "$VENV" -r requirements.txt

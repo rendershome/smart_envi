@@ -1,0 +1,13 @@
+# Local development instance of Home Assistant (started by scripts/develop).
+# Everything else HA writes into this folder is git-ignored.
+default_config:
+
+homeassistant:
+  name: Smart Envi Dev
+  unit_system: us_customary
+  time_zone: America/Toronto
+
+logger:
+  default: info
+  logs:
+    custom_components.smart_envi: debug

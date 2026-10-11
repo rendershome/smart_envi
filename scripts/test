@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Run the test suite. Extra arguments are passed to pytest.
+set -e
+cd "$(dirname "$0")/.."
+VENV="${VENV:-$HOME/.venvs/smart_envi}"  # outside the repo (it is synced to Google Drive)
+
+"$VENV"/bin/pytest "$@"

@@ -1,0 +1,26 @@
+[project]
+name = "smart_envi"
+version = "2.1.0-dev"
+description = "Home Assistant custom integration for Envi Smart Heaters"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py313"
+extend-exclude = ["config"]
+
+[tool.ruff.lint]
+# Start with errors and likely bugs; tighten over time.
+select = ["E", "F", "W", "B", "I", "UP", "ASYNC"]
+ignore = [
+    "E501",  # line length is handled by the formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.smart_envi"]
+force-sort-within-sections = true
+combine-as-imports = true

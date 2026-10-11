@@ -1,0 +1,7 @@
+# Development dependencies: a local Home Assistant to run the integration in,
+# plus the test harness and linter. Keep homeassistant in step with the version
+# pytest-homeassistant-custom-component pins. Matches the production HA on
+# rae-nas (2025.12.x).
+homeassistant==2025.12.4
+pytest-homeassistant-custom-component==0.13.301
+ruff==0.17.0

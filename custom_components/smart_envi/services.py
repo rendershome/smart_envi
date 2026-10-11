@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry
@@ -418,6 +418,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({
             vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         }),
+        supports_response=SupportsResponse.ONLY,
     )
     
     hass.services.async_register(
@@ -427,6 +428,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({
             vol.Required(ATTR_ENTITY_ID): cv.entity_id,
         }),
+        supports_response=SupportsResponse.ONLY,
     )
     
     hass.services.async_register(
