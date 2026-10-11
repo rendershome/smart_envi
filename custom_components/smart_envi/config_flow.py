@@ -88,6 +88,61 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         self._schedule_id: int | None = None
         self._all_schedules: list[dict] = []
     
+    def _extract_events_from_schedule(self, schedule: dict) -> list[dict]:
+        """Extract time entries from schedule_data structure.
+        
+        The API returns schedules with structure:
+        {
+            "schedule_data": [
+                {
+                    "events": [
+                        {
+                            "local_time": "19:00",
+                            "heat_to": 20,
+                            "cool_to": 20,
+                            "title": "Evenings",
+                            ...
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        Returns a list of time entry dicts in format: {"time": "HH:MM:SS", "temperature": float, "enabled": bool}
+        """
+        times = []
+        schedule_data = schedule.get("schedule_data", [])
+        
+        if isinstance(schedule_data, list) and schedule_data:
+            # Get events from first schedule group (most schedules have one group)
+            first_group = schedule_data[0]
+            events = first_group.get("events", [])
+            
+            if isinstance(events, list):
+                for event in events:
+                    if isinstance(event, dict):
+                        # Get time - use local_time, fallback to trigger_time
+                        time_str = event.get("local_time") or event.get("trigger_time") or ""
+                        # Convert HH:MM to HH:MM:SS
+                        if time_str and ":" in time_str:
+                            time_parts = time_str.split(":")
+                            if len(time_parts) == 2:
+                                time_str = f"{time_str}:00"
+                        
+                        # Get temperature - prefer heat_to, fallback to cool_to, then temperature
+                        temp = event.get("heat_to") or event.get("cool_to") or event.get("temperature")
+                        if temp is None:
+                            continue
+                        
+                        # Temperature is always enabled if present
+                        times.append({
+                            "time": time_str,
+                            "temperature": float(temp),
+                            "enabled": True,
+                        })
+        
+        return times
+    
     def _format_time_entries_for_display(self, times: list[dict]) -> str:
         """Format time entries list into display string.
         
@@ -195,7 +250,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             menu_options={
                 "integration": "Integration Settings (Scan Interval, API Timeout)",
-                "schedule": "Edit Device Schedule",
+                "schedules": "Manage Schedules",
             },
         )
     
@@ -203,9 +258,31 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle integration menu selection - redirect to integration_options."""
         return await self.async_step_integration_options(user_input)
     
-    async def async_step_schedule(self, user_input: dict | None = None) -> FlowResult:
-        """Handle schedule menu selection - redirect to select_device."""
-        return await self.async_step_select_device(user_input)
+    async def async_step_schedules(self, user_input: dict | None = None) -> FlowResult:
+        """Handle schedules menu selection - show options for device-specific or all schedules."""
+        return await self.async_step_schedule_options(user_input)
+    
+    async def async_step_schedule_options(self, user_input: dict | None = None) -> FlowResult:
+        """Show options for schedule management: device-specific or all schedules."""
+        if user_input is not None:
+            schedule_type = user_input.get("schedule_type")
+            if schedule_type == "device":
+                return await self.async_step_select_device(user_input)
+            elif schedule_type == "all":
+                return await self.async_step_list_schedules(user_input)
+        
+        return self.async_show_form(
+            step_id="schedule_options",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "schedule_type",
+                    description=" \n\nChoose how you want to manage schedules: Device Schedule (edit for specific heater) or All Schedules (view and manage all schedules from your account).",
+                ): vol.In({
+                    "device": "Edit Schedule for a Specific Device",
+                    "all": "View and Manage All Schedules",
+                }),
+            }),
+        )
 
     async def async_step_integration_options(self, user_input: dict | None = None) -> FlowResult:
         """Manage integration options (scan interval, API timeout)."""
@@ -339,38 +416,54 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                 # Get device state to find schedule info
                 device_data = await client.get_device_state(self._device_id)
                 schedule_info = device_data.get("schedule", {})
+                _LOGGER.debug("Raw schedule_info from device_state: %s", schedule_info)
                 
                 schedule_id = None
                 if isinstance(schedule_info, dict):
                     schedule_id = schedule_info.get("schedule_id") or schedule_info.get("id")
+                    _LOGGER.debug("Found schedule_id: %s", schedule_id)
                 
-                # Build schedule data
+                # Build initial schedule data from device state
+                # Note: Device state only shows current/active schedule event, not full schedule
                 self._schedule_data = {
                     "device_id": self._device_id,
                     "schedule_id": schedule_id,
-                    "enabled": schedule_info.get("enabled", False) if isinstance(schedule_info, dict) else False,
+                    "enabled": True,  # Schedule exists, so it's enabled
                     "name": schedule_info.get("name") or schedule_info.get("title") if isinstance(schedule_info, dict) else None,
                     "temperature": schedule_info.get("temperature") if isinstance(schedule_info, dict) else None,
-                    "times": schedule_info.get("times", []) if isinstance(schedule_info, dict) else [],
+                    "times": [],  # Will be populated from full schedule
                 }
                 
-                # Try to get full schedule details if schedule_id exists
+                _LOGGER.debug("Schedule data after initial load: %s", self._schedule_data)
+                
+                # Get full schedule details if schedule_id exists
                 if schedule_id:
                     try:
-                        schedule_list = await client.get_schedule_list()
-                        for schedule in schedule_list:
-                            if isinstance(schedule, dict) and schedule.get("id") == schedule_id:
-                                self._schedule_data.update({
-                                    "enabled": schedule.get("enabled", self._schedule_data["enabled"]),
-                                    "name": schedule.get("name") or self._schedule_data["name"],
-                                    "temperature": schedule.get("temperature") or self._schedule_data["temperature"],
-                                    "times": schedule.get("times", self._schedule_data["times"]),
-                                })
-                                break
+                        # Use get_schedule() directly for more reliable data
+                        schedule = await client.get_schedule(schedule_id)
+                        _LOGGER.debug("Full schedule from API: %s", schedule)
+                        
+                        if isinstance(schedule, dict):
+                            # Extract events from schedule_data structure
+                            times = self._extract_events_from_schedule(schedule)
+                            
+                            _LOGGER.debug("Extracted times from schedule_data: %s", times)
+                            
+                            # Schedule is enabled if it exists and has events
+                            schedule_enabled = len(times) > 0
+                            
+                            self._schedule_data.update({
+                                "enabled": schedule_enabled,
+                                "name": schedule.get("name") or self._schedule_data["name"],
+                                "times": times,
+                            })
+                            _LOGGER.debug("Final schedule data: %s", self._schedule_data)
                     except (EnviApiError, EnviDeviceError) as e:
                         _LOGGER.warning("Could not fetch full schedule details for schedule_id %s: %s", schedule_id, e)
+                        # Continue with device state schedule info
                     except Exception as e:
-                        _LOGGER.debug("Could not fetch full schedule details: %s", e)
+                        _LOGGER.error("Unexpected error fetching schedule details: %s", e, exc_info=True)
+                        # Continue with device state schedule info
             except (EnviApiError, EnviDeviceError) as e:
                 _LOGGER.error("Failed to get schedule: %s", e)
                 errors["base"] = "failed_to_load_schedule"
@@ -402,15 +495,18 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                     schedule_data["times"] = times
                     
                     # Get schedule_id for update or use device_id for creation
-                    schedule_id = self._schedule_data.get("schedule_id") if self._schedule_data else None
+                    schedule_id = self._schedule_id or (self._schedule_data.get("schedule_id") if self._schedule_data else None)
                     
                     if schedule_id:
                         # Update existing schedule
                         await client.update_schedule(schedule_id, schedule_data)
                     else:
                         # Create new schedule
-                        schedule_data["device_id"] = self._device_id
-                        await client.create_schedule(schedule_data)
+                        if not self._device_id:
+                            errors["base"] = "device_id_required_for_creation"
+                        else:
+                            schedule_data["device_id"] = self._device_id
+                            await client.create_schedule(schedule_data)
                     
                     # Refresh device data
                     coordinator_key = f"{DOMAIN}_coordinator_{self.config_entry.entry_id}"
@@ -444,8 +540,8 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         time_entries_str = self._format_time_entries_for_display(current_times) if current_times else ""
         _LOGGER.debug("Formatted time entries: %s (from %s entries)", time_entries_str, len(current_times) if current_times else 0)
         
-        _LOGGER.debug("Form defaults: enabled=%s, name=%s, time_entries=%s", 
-                     enabled_value, current_schedule.get("name", ""), time_entries_str)
+        _LOGGER.debug("Form defaults: enabled=%s, name=%s, time_entries_str length=%s, current_times count=%s", 
+                     enabled_value, current_schedule.get("name", ""), len(time_entries_str), len(current_times) if current_times else 0)
         
         return self.async_show_form(
             step_id="edit_schedule",
@@ -529,7 +625,10 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             schedule_id = schedule.get("id")
             schedule_name = schedule.get("name") or "Unnamed Schedule"
             device_id = schedule.get("device_id")
-            enabled_status = "✓" if schedule.get("enabled") else "✗"
+            
+            # Check if schedule has events (enabled if it has events)
+            events = self._extract_events_from_schedule(schedule)
+            enabled_status = "✓" if events else "✗"
             
             if schedule_id:
                 device_name = device_map.get(str(device_id), f"Device {device_id}")
@@ -572,13 +671,17 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         if self._schedule_data is None:
             try:
                 schedule = await client.get_schedule(self._schedule_id)
+                # Extract events from schedule_data structure
+                times = self._extract_events_from_schedule(schedule)
+                enabled = len(times) > 0
+                
                 self._schedule_data = {
                     "schedule_id": schedule.get("id"),
                     "device_id": schedule.get("device_id"),
-                    "enabled": schedule.get("enabled", False),
+                    "enabled": enabled,
                     "name": schedule.get("name") or "",
                     "temperature": schedule.get("temperature"),
-                    "times": schedule.get("times", []),
+                    "times": times,
                 }
                 self._device_id = str(schedule.get("device_id", ""))
             except (EnviApiError, EnviDeviceError) as e:
@@ -608,8 +711,11 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
                         title="",
                         data=self.config_entry.options or {},
                     )
+                except (EnviApiError, EnviDeviceError) as e:
+                    _LOGGER.error("Failed to delete schedule: %s", e)
+                    errors["base"] = "failed_to_delete_schedule"
                 except Exception as e:
-                    _LOGGER.error("Failed to delete schedule: %s", e, exc_info=True)
+                    _LOGGER.exception("Unexpected error deleting schedule")
                     errors["base"] = "failed_to_delete_schedule"
             
             elif action == "edit":
@@ -643,19 +749,20 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="view_schedule",
             data_schema=vol.Schema({
                 vol.Required(
-                    "enabled",
-                    default=current_schedule.get("enabled", False),
-                ): bool,
-                vol.Optional(
-                    "name",
-                    default=current_schedule.get("name", ""),
-                ): str,
-                vol.Optional(
-                    "time_entries",
-                    default=time_entries_str,
-                ): str,
+                    "action",
+                    description=f" \n\nSchedule: {current_schedule.get('name', 'Unnamed')} for {device_name}. Choose an action.",
+                ): vol.In({
+                    "edit": "Edit Schedule",
+                    "delete": "Delete Schedule",
+                }),
             }),
             errors=errors,
+            description_placeholders={
+                "schedule_name": current_schedule.get("name", "Unnamed Schedule"),
+                "device_name": device_name,
+                "enabled": "Enabled" if current_schedule.get("enabled") else "Disabled",
+                "time_count": str(len(current_times)),
+            },
         )
     
     async def async_step_edit_schedule_from_list(self, user_input: dict | None = None) -> FlowResult:
@@ -669,33 +776,28 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             if client:
                 try:
                     schedule = await client.get_schedule(self._schedule_id)
-                    _LOGGER.debug("Loaded schedule data: %s", schedule)
+                    _LOGGER.debug("Loaded schedule data from list: %s", schedule)
                     
-                    # Normalize enabled field (handle 0/1, "true"/"false", boolean)
-                    enabled = schedule.get("enabled", False)
-                    if isinstance(enabled, str):
-                        enabled = enabled.lower() in ("true", "1", "yes", "on")
-                    elif isinstance(enabled, int):
-                        enabled = bool(enabled)
+                    # Extract events from schedule_data structure
+                    times = self._extract_events_from_schedule(schedule)
                     
-                    # Get times - handle various formats
-                    times = schedule.get("times", [])
-                    if not times:
-                        times = schedule.get("time_entries", [])
-                    if not isinstance(times, list):
-                        times = []
+                    # Schedule is enabled if it exists and has events
+                    enabled = len(times) > 0
+                    
+                    _LOGGER.debug("Schedule from list - enabled: %s, times_count: %s, times: %s", 
+                                 enabled, len(times), times)
                     
                     self._schedule_data = {
                         "schedule_id": schedule.get("id"),
                         "device_id": schedule.get("device_id"),
                         "enabled": enabled,
-                        "name": schedule.get("name") or schedule.get("title") or "",
+                        "name": schedule.get("name") or "",
                         "temperature": schedule.get("temperature"),
                         "times": times,
                     }
                     self._device_id = str(schedule.get("device_id", ""))
-                    _LOGGER.debug("Processed schedule data: enabled=%s, name=%s, times_count=%s", 
-                                 enabled, self._schedule_data.get("name"), len(times))
+                    _LOGGER.debug("Processed schedule data: enabled=%s, name=%s, times_count=%s, times=%s", 
+                                 enabled, self._schedule_data.get("name"), len(times), times)
                 except Exception as e:
                     _LOGGER.error("Failed to load schedule: %s", e, exc_info=True)
                     self._schedule_data = {}
