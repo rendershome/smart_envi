@@ -104,6 +104,12 @@
       "invalid_temperature": "Temperature must be between 50 and 86°F",
       "schedule_update_failed": "Failed to update schedule. Please try again."
     }
+  },
+  "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Schedule"
+      }
+    }
   }
 }
-

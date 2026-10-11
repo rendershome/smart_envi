@@ -18,6 +18,9 @@ MAX_API_TIMEOUT = 60  # seconds
 # Temperature limits in Fahrenheit
 MIN_TEMPERATURE = 50
 MAX_TEMPERATURE = 86
+# The same limits for heaters set to Celsius
+MIN_TEMPERATURE_C = 10
+MAX_TEMPERATURE_C = 30
 
 # API Configuration
 BASE_URL = "https://app-apis.enviliving.com/apis/v1"

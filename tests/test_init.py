@@ -39,6 +39,21 @@ async def test_setup_creates_entities(
         assert hass.services.has_service(DOMAIN, service)
 
 
+async def test_heater_entity_uses_device_name(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """The heater is named after the device once, not twice."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "climate", DOMAIN, f"{DOMAIN}_{DEVICE_ID}"
+    )
+    assert entity_id == "climate.living_room"
+    assert hass.states.get(entity_id).attributes["friendly_name"] == "Living Room"
+
+
 async def test_setup_auth_failure_starts_reauth(
     hass: HomeAssistant, mock_client: AsyncMock, config_entry
 ) -> None:

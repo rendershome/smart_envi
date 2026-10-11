@@ -88,6 +88,11 @@ class EnviBinarySensor(CoordinatorEntity, BinarySensorEntity):
             manufacturer="EHEAT",
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Load the coordinator's current data instead of waiting for the next poll."""
+        await super().async_added_to_hass()
+        self._update_from_coordinator()
+
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         self._update_from_coordinator()
