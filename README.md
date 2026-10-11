@@ -99,6 +99,7 @@ scripts/setup     # create the virtualenv (~/.venvs/smart_envi) and install Home
 scripts/test      # run the test suite
 scripts/lint      # format and lint
 scripts/develop   # run a local Home Assistant at http://localhost:8123 with this integration loaded
+scripts/live-check  # check the API client against your real Envi account (read-only; --write, --dump)
 ```
 
 Dev dependencies in `requirements.txt` are pinned to the Home Assistant release the integration is deployed on. Set `VENV=/some/path` to use a different virtualenv location.

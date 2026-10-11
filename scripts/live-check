@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Check the API client against your real Envi account and heaters.
+# Read-only unless --write is passed. See scripts/live_check.py.
+set -e
+cd "$(dirname "$0")/.."
+VENV="${VENV:-$HOME/.venvs/smart_envi}"  # outside the repo (it is synced to Google Drive)
+
+"$VENV"/bin/python scripts/live_check.py "$@"

@@ -60,6 +60,8 @@ htmlcov/
 # Ad-hoc test scripts in the repo root (may contain credentials - keep local only)
 # The tests/ directory is tracked.
 /test_*.py
+# Raw API responses from scripts/live-check --dump
+/api_dump*.json
 /*_test.py
 
 # Credentials and sensitive data
