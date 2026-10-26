@@ -1,6 +1,7 @@
 {
   "domain": "smart_envi",
   "name": "Envi Smart Heater",
+  "categories": ["climate.thermostats_heating"],
   "codeowners": ["@raeapps"],
   "config_flow": true,
   "documentation": "https://github.com/raeapps/smart_envi/blob/main/HELP.md",
