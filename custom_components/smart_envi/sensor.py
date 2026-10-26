@@ -42,16 +42,6 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
         self._device_name = device_name
         self._attr_unique_id = f"{DOMAIN}_{device_id}_{sensor_type}"
         self._attr_name = f"{device_name} {self._get_sensor_name()}"
-        
-        # Try to set initial unit for schedule temperature sensor
-        if sensor_type == "schedule_temperature":
-            initial_data = coordinator.get_device_data(device_id)
-            if initial_data:
-                temp_unit = initial_data.get("temperature_unit", "F").upper()
-                if temp_unit == "C":
-                    self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-                else:
-                    self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
 
     def _get_sensor_name(self) -> str:
         """Get human-readable sensor name."""
@@ -61,6 +51,7 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
             "mode": "Mode",
             "schedule_name": "Schedule Name",
             "schedule_temperature": "Schedule Temperature",
+            "next_schedule_change": "Next Schedule Change",
             "wifi_ssid": "WiFi Network",
             "location": "Location",
             "model": "Model",
@@ -77,6 +68,11 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
             name=self._device_name,
             manufacturer="EHEAT",
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Load the coordinator's current data instead of waiting for the next poll."""
+        await super().async_added_to_hass()
+        self._update_from_coordinator()
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -265,14 +261,6 @@ class EnviScheduleTemperatureSensor(EnviSensor):
                     # Keep temperature in device's native unit (no conversion)
                     # The API already returns it in the correct unit
                     self._attr_native_value = float(temp)
-                    _LOGGER.debug(
-                        "Schedule temperature for %s: %s %s (device unit: %s, native_unit: %s)",
-                        self.device_id,
-                        self._attr_native_value,
-                        self._attr_native_unit_of_measurement,
-                        temp_unit,
-                        self._attr_native_unit_of_measurement
-                    )
                 else:
                     self._attr_native_value = None
             else:
@@ -280,6 +268,51 @@ class EnviScheduleTemperatureSensor(EnviSensor):
             self._attr_available = True
         else:
             self._attr_available = False
+
+
+class EnviNextScheduleChangeSensor(EnviSensor):
+    """When the schedule next changes the setpoint, and to what."""
+
+    _attr_icon = "mdi:calendar-arrow-right"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self,
+        coordinator: EnviDataUpdateCoordinator,
+        device_id: str,
+        device_name: str,
+    ) -> None:
+        """Initialize next schedule change sensor."""
+        super().__init__(coordinator, device_id, "next_schedule_change", device_name)
+
+    def _update_from_coordinator(self) -> None:
+        """Update from the device's upcoming schedule event."""
+        data = self.coordinator.get_device_data(self.device_id)
+        if not data:
+            self._attr_available = False
+            return
+        self._attr_available = True
+        schedule = data.get("schedule")
+        if not data.get("is_schedule_active") or not isinstance(schedule, dict):
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {}
+            return
+        event_date = schedule.get("eventDate")
+        try:
+            self._attr_native_value = (
+                datetime.fromisoformat(str(event_date).replace("Z", "+00:00"))
+                if event_date
+                else None
+            )
+        except ValueError:
+            _LOGGER.warning("Unexpected schedule eventDate %r for device %s", event_date, self.device_id)
+            self._attr_native_value = None
+        self._attr_extra_state_attributes = {
+            "title": schedule.get("title"),
+            "temperature": schedule.get("temperature"),
+            "temperature_unit": data.get("temperature_unit"),
+            "schedule_name": schedule.get("name"),
+        }
 
 
 class EnviWiFiSSIDSensor(EnviSensor):
@@ -490,12 +523,6 @@ async def async_setup_entry(
     if not coordinator:
         _LOGGER.error("Coordinator not found for entry %s", entry.entry_id)
         return
-        if not coordinator.data:
-            try:
-                await coordinator.async_refresh()
-            except Exception as e:
-                _LOGGER.error("Failed to refresh coordinator: %s", e, exc_info=True)
-                return
     
     device_ids = coordinator.device_ids
 
@@ -521,6 +548,7 @@ async def async_setup_entry(
                     EnviModeSensor(coordinator, device_id, device_name),
                     EnviScheduleNameSensor(coordinator, device_id, device_name),
                     EnviScheduleTemperatureSensor(coordinator, device_id, device_name),
+                    EnviNextScheduleChangeSensor(coordinator, device_id, device_name),
                     EnviWiFiSSIDSensor(coordinator, device_id, device_name),
                     EnviLocationSensor(coordinator, device_id, device_name),
                     EnviModelSensor(coordinator, device_id, device_name),

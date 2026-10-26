@@ -1,0 +1,25 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      # Create the venv by hand instead of activate-environment: homeassistant
+      # installs its own uv into .venv, which would then shadow setup-uv's uv
+      # and break its post-job cache prune.
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+      - name: Run tests
+        run: .venv/bin/pytest

@@ -1,14 +1,11 @@
 {
   "domain": "smart_envi",
   "name": "Envi Smart Heater",
-  "documentation": "https://github.com/rendershome/smart_envi/blob/develop/HELP.md",
-  "issue_tracker": "https://github.com/rendershome/smart_envi/issues",
-  "requirements": ["aiohttp>=3.8.4"],
-  "dependencies": [],
-  "codeowners": ["@rendershome"],
+  "codeowners": ["@raeapps"],
   "config_flow": true,
-  "version": "2.1.0-dev",
-  "iot_class": "cloud_poll",
-  "translations": ["en"],
-  "homeassistant": "2023.1.0"
+  "documentation": "https://github.com/raeapps/smart_envi/blob/main/HELP.md",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/raeapps/smart_envi/issues",
+  "requirements": [],
+  "version": "2.1.0-dev"
 }

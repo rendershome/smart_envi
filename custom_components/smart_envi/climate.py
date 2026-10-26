@@ -10,7 +10,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, MIN_TEMPERATURE, MAX_TEMPERATURE
+from .const import (
+    DOMAIN,
+    MAX_TEMPERATURE,
+    MAX_TEMPERATURE_C,
+    MIN_TEMPERATURE,
+    MIN_TEMPERATURE_C,
+)
 from .api import EnviApiError, EnviDeviceError, EnviAuthenticationError
 from .coordinator import EnviDataUpdateCoordinator
 
@@ -34,12 +40,15 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
     Attributes:
         _attr_hvac_modes: Available HVAC modes (OFF, HEAT)
         _attr_supported_features: Supported climate features
-        _attr_temperature_unit: Temperature unit (Fahrenheit)
-        _attr_target_temperature_high: Maximum target temperature (86°F)
-        _attr_target_temperature_low: Minimum target temperature (50°F)
+
+    Temperatures are reported in the heater's own unit (°C or °F, as set in
+    the Envi app); Home Assistant converts them for display if needed.
     """
 
     _attr_has_entity_name = True
+    # The heater is the device's main entity, so it takes the device name as-is
+    # (climate.living_room rather than climate.living_room_living_room).
+    _attr_name = None
     _attr_icon = "mdi:radiator"  # Default icon, will update based on state
     _attr_entity_registry_enabled_default = True
     _attr_hvac_modes: ClassVar[list[HVACMode]] = [HVACMode.OFF, HVACMode.HEAT]
@@ -48,9 +57,7 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
-    _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
-    _attr_target_temperature_high = MAX_TEMPERATURE
-    _attr_target_temperature_low = MIN_TEMPERATURE
+    _attr_target_temperature_step = 1.0
     _enable_turn_on_off_backwards_compatibility = False
     
     def _handle_coordinator_update(self) -> None:
@@ -70,23 +77,16 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         self.client = coordinator.client
         self.device_id = str(device_id)
         
-        # Get initial device data from coordinator
-        device_data = coordinator.get_device_data(device_id) or {}
-        
-        # Get device name from data if available
-        device_name = device_data.get("name", f"Smart Envi {device_id}")
-        self._attr_name = device_name
+        # Set defaults - will be updated by _update_from_coordinator
+        self._device_name = f"Smart Envi {device_id}"
         self._attr_unique_id = f"{DOMAIN}_{device_id}"
-        
-        # Temperature unit handling
-        self._temperature_unit_api = device_data.get("temperature_unit", "F").upper()
-        
+        self._temperature_unit_api = "F"
         self._current_temperature = None
         self._target_temperature = None
         self._attr_hvac_mode = HVACMode.OFF
-        self._serial_no = device_data.get("serial_no")
-        self._firmware_version = device_data.get("firmware_version")
-        self._model_no = device_data.get("model_no")
+        self._serial_no = None
+        self._firmware_version = None
+        self._model_no = None
         
         # Update from coordinator data
         self._update_from_coordinator()
@@ -106,19 +106,9 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         temp_unit = data.get("temperature_unit", "F").upper()
         self._temperature_unit_api = temp_unit
         
-        # Get temperatures and convert if needed
-        ambient_temp = data.get("ambient_temperature")
-        target_temp = data.get("current_temperature")
-        
-        # Convert to Fahrenheit if device reports in Celsius
-        if temp_unit == "C":
-            if ambient_temp is not None:
-                self._current_temperature = self.client.convert_temperature(ambient_temp, "C", "F")
-            if target_temp is not None:
-                self._target_temperature = self.client.convert_temperature(target_temp, "C", "F")
-        else:
-            self._current_temperature = ambient_temp
-            self._target_temperature = target_temp
+        # Temperatures are in the heater's own unit (see temperature_unit)
+        self._current_temperature = data.get("ambient_temperature")
+        self._target_temperature = data.get("current_temperature")
         
         # Update HVAC mode
         self._attr_hvac_mode = HVACMode.HEAT if data.get("state") == 1 else HVACMode.OFF
@@ -134,9 +124,9 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         self._model_no = data.get("model_no")
         self._serial_no = data.get("serial_no", self._serial_no)
         
-        # Update name if it changed
-        if data.get("name") and data.get("name") != self._attr_name:
-            self._attr_name = data.get("name")
+        # Update device name if it changed
+        if data.get("name"):
+            self._device_name = data.get("name")
         
         # Update extra state attributes with additional device information
         self._update_extra_attributes(data)
@@ -163,17 +153,67 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
             "schedule_active": data.get("is_schedule_active", False),
             "schedule_name": schedule_name,
             "schedule_temperature": schedule_temp,
-            "freeze_protect": not data.get("freeze_protect_setting", True),  # Inverted
-            "child_lock": not data.get("child_lock_setting", True),  # Inverted
+            "freeze_protect": self._parse_inverted_bool(data.get("freeze_protect_setting"), default_on=True),
+            "child_lock": self._parse_inverted_bool(data.get("child_lock_setting"), default_on=False),
             "hold": data.get("is_hold", False),
             "geofence_active": data.get("is_geofence_active", False),
             "last_update": data.get("device_status_res_at") or data.get("device_status_req_at"),
         }
 
+    def _parse_inverted_bool(self, value, default_on: bool = True) -> bool:
+        """Parse API boolean values with inverted semantics.
+        
+        API returns True when feature is OFF, False when ON.
+        
+        Args:
+            value: API value (bool, int, str, or None)
+            default_on: Default value if None or unexpected type
+            
+        Returns:
+            Inverted boolean (True = feature ON, False = feature OFF)
+        """
+        if value is None:
+            return default_on
+        if isinstance(value, bool):
+            return not value
+        if isinstance(value, (int, str)):
+            if value in (1, "true", "True", "1"):
+                return False
+            if value in (0, "false", "False", "0"):
+                return True
+        return not bool(value)
+
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.get_device_data(self.device_id) is not None
+        """Return if entity is available.
+
+        Unavailable when Envi reports the heater offline (device_status 0):
+        the cloud then keeps serving the last values it heard, which can be
+        days old.
+        """
+        data = self.coordinator.get_device_data(self.device_id)
+        return (
+            self.coordinator.last_update_success
+            and data is not None
+            and data.get("device_status", 1) != 0
+        )
+
+    @property
+    def temperature_unit(self) -> str:
+        """Return the heater's own temperature unit."""
+        if self._temperature_unit_api == "C":
+            return UnitOfTemperature.CELSIUS
+        return UnitOfTemperature.FAHRENHEIT
+
+    @property
+    def min_temp(self) -> float:
+        """Return the lowest target temperature the heater accepts."""
+        return MIN_TEMPERATURE_C if self._temperature_unit_api == "C" else MIN_TEMPERATURE
+
+    @property
+    def max_temp(self) -> float:
+        """Return the highest target temperature the heater accepts."""
+        return MAX_TEMPERATURE_C if self._temperature_unit_api == "C" else MAX_TEMPERATURE
 
     @property
     def current_temperature(self) -> float | None:
@@ -191,7 +231,7 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         model = self._model_no or "Smart Envi"
         
         # Build device name with location if available
-        device_name = self._attr_name
+        device_name = self._device_name
         location = None
         data = self.coordinator.get_device_data(self.device_id)
         if data:
@@ -213,7 +253,8 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         """Set new target temperature.
         
         Args:
-            **kwargs: May contain ATTR_TEMPERATURE with the target temperature in Fahrenheit
+            **kwargs: May contain ATTR_TEMPERATURE with the target temperature in
+                the heater's unit (Home Assistant converts to it before calling)
             
         Raises:
             HomeAssistantError: If temperature is invalid or setting fails
@@ -226,28 +267,20 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         if not isinstance(temperature, (int, float)):
             raise HomeAssistantError(f"Invalid temperature value: {temperature}")
         
-        if temperature < MIN_TEMPERATURE or temperature > MAX_TEMPERATURE:
+        unit = self._temperature_unit_api
+        if temperature < self.min_temp or temperature > self.max_temp:
             raise HomeAssistantError(
-                f"Temperature must be between {MIN_TEMPERATURE}°F and {MAX_TEMPERATURE}°F. "
-                f"Received: {temperature}°F"
+                f"Temperature must be between {self.min_temp}°{unit} and {self.max_temp}°{unit}. "
+                f"Received: {temperature}°{unit}"
             )
-        
-        # Convert to device's unit if needed
-        if self._temperature_unit_api == "C":
-            temp_to_send = self.client.convert_temperature(temperature, "F", "C")
-            # Validate converted temperature is within reasonable range (10-30°C)
-            if temp_to_send < 10 or temp_to_send > 30:
-                _LOGGER.warning(
-                    "Converted temperature %s°C is outside typical range (10-30°C)", temp_to_send
-                )
-        else:
-            temp_to_send = temperature
-            
+
+        # The heater takes whole degrees; send an int when the value is one
+        temp_to_send = int(temperature) if float(temperature).is_integer() else temperature
+
         try:
             await self.client.set_temperature(self.device_id, temp_to_send)
-            self._target_temperature = temperature  # Store in Fahrenheit for HA
-            _LOGGER.debug("Set temperature to %s°F (%s°%s) for %s", 
-                         temperature, temp_to_send, self._temperature_unit_api, self.device_id)
+            self._target_temperature = temperature
+            _LOGGER.debug("Set temperature to %s°%s for %s", temp_to_send, unit, self.device_id)
             # Refresh this device's data immediately
             await self.coordinator.async_refresh_device(self.device_id)
             self._update_from_coordinator()

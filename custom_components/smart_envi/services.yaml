@@ -1,6 +1,33 @@
-# Empty services.yaml for Home Assistant 2025.12 compatibility
-# Services are registered programmatically in services.py
-# This empty file prevents Home Assistant from trying to load a non-existent file
+refresh_all:
+  name: Refresh all heaters
+  description: Fetch the latest state of every Smart Envi heater from the Envi cloud.
 
+get_schedule:
+  name: Get schedule
+  description: Get the current schedule for a Smart Envi heater.
+  fields:
+    entity_id:
+      name: Heater
+      description: The Smart Envi climate entity to read.
+      required: true
+      selector:
+        entity:
+          integration: smart_envi
+          domain: climate
 
+get_status:
+  name: Get status
+  description: Get detailed status for a Smart Envi heater.
+  fields:
+    entity_id:
+      name: Heater
+      description: The Smart Envi climate entity to read.
+      required: true
+      selector:
+        entity:
+          integration: smart_envi
+          domain: climate
 
+test_connection:
+  name: Test connection
+  description: Check that the Envi cloud API is reachable with the configured account.

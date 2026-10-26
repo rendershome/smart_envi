@@ -63,14 +63,16 @@ Control your heaters through the climate entities:
 
 - `smart_envi.refresh_all`: Refresh all heaters
 - `smart_envi.get_status`: Get detailed device status
-- `smart_envi.set_schedule`: Set heating schedules
+- `smart_envi.get_schedule`: Get a heater's current schedule
 - `smart_envi.test_connection`: Test API connection
+
+Each heater also gets a **Schedule** calendar and a **Next Schedule Change** sensor. Schedules are view-only in Home Assistant (the Envi API offers no way to save them); edit them in the Envi app.
 
 See the [full documentation](custom_components/smart_envi/README.md) for detailed usage examples.
 
 ## Requirements
 
-- Home Assistant 2023.1 or later
+- Home Assistant 2024.11 or later
 - Envi account with active heaters
 - Internet connection
 
@@ -89,6 +91,20 @@ logger:
 ```
 
 See the [troubleshooting guide](custom_components/smart_envi/README.md#troubleshooting) for common issues.
+
+## Development
+
+The dev tooling runs on Linux, macOS or WSL (Home Assistant does not run natively on Windows) and needs [uv](https://docs.astral.sh/uv/).
+
+```bash
+scripts/setup     # create the virtualenv (~/.venvs/smart_envi) and install Home Assistant, pytest and ruff
+scripts/test      # run the test suite
+scripts/lint      # format and lint
+scripts/develop   # run a local Home Assistant at http://localhost:8123 with this integration loaded
+scripts/live-check  # check the API client against your real Envi account (read-only; --write, --dump)
+```
+
+Dev dependencies in `requirements.txt` are pinned to the Home Assistant release the integration is deployed on. Set `VENV=/some/path` to use a different virtualenv location.
 
 ## Contributing
 

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -21,6 +22,22 @@ _LOGGER = logging.getLogger(__name__)
 # Retry configuration
 RETRYABLE_STATUS_CODES = (429, 500, 502, 503, 504)  # Rate limit and server errors
 RETRYABLE_EXCEPTIONS = (aiohttp.ClientError, asyncio.TimeoutError)
+
+
+def _redact_sensitive_data(text: str) -> str:
+    """Redact sensitive data like tokens from log output.
+    
+    Args:
+        text: Text to redact
+        
+    Returns:
+        Text with sensitive values replaced by [REDACTED]
+    """
+    # Redact JWT tokens (long base64 strings after "token":)
+    text = re.sub(r'"token"\s*:\s*"[^"]{20,}"', '"token": "[REDACTED]"', text)
+    # Redact any long alphanumeric strings that look like tokens
+    text = re.sub(r'\b[A-Za-z0-9_-]{40,}\b', '[REDACTED]', text)
+    return text
 
 
 class EnviApiError(Exception):
@@ -74,7 +91,7 @@ class EnviApiClient:
             EnviAuthenticationError: If authentication fails (invalid credentials,
                 network error, or API rejection)
         """
-        fresh_device_id = f"ha_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}"
+        fresh_device_id = f"ha_{uuid.uuid4().hex}"
         payload = {
             "username": self.username,
             "password": self.password,
@@ -92,23 +109,44 @@ class EnviApiClient:
         try:
             async with self.session.post(url, json=payload, headers=headers, timeout=self.timeout) as resp:
                 resp_text = await resp.text()
-                _LOGGER.debug("Envi login HTTP %s - %.1000s", resp.status, resp_text)
+                _LOGGER.debug("Envi login HTTP %s - %s", resp.status, _redact_sensitive_data(resp_text[:500]))
                 if resp.status != 200:
-                    raise EnviAuthenticationError(f"Login failed (HTTP {resp.status})")
+                    # The body is e.g. {"msgCode":5010,"msg":"Incorrect login credentials"};
+                    # surface msg/msgCode only, never the request payload (it holds the password).
+                    try:
+                        body = json.loads(resp_text)
+                    except ValueError:
+                        body = {}
+                    if not isinstance(body, dict):
+                        body = {}
+                    msg = body.get("msg") or "no message"
+                    msg_code = body.get("msgCode")
+                    raise EnviAuthenticationError(
+                        f"Login failed (HTTP {resp.status}, msgCode {msg_code}): {msg}"
+                    )
                 data = json.loads(resp_text)
                 if data.get("status") != "success":
                     msg = data.get("msg", "unknown error")
                     raise EnviAuthenticationError(f"Envi rejected login: {msg}")
-                self.token = data["data"]["token"]
-                jwt_exp = self._parse_jwt_expiry(self.token)
+                token = data["data"]["token"]
+                self.token = token
+                jwt_exp = self._parse_jwt_expiry(token) if token else None
                 self.token_expires = jwt_exp or (datetime.now(timezone.utc) + timedelta(hours=24))
                 _LOGGER.info(
                     "Envi login successful - token valid until %s",
                     self.token_expires.strftime("%Y-%m-%d %H:%M"),
                 )
+        except EnviAuthenticationError as err:
+            # Keep the server's reason instead of hiding it behind a generic message.
+            self.token = None
+            self.token_expires = None
+            _LOGGER.error("Envi authentication failed: %s", err)
+            raise
         except Exception as err:
+            self.token = None
+            self.token_expires = None
             _LOGGER.error("Envi authentication failed", exc_info=True)
-            raise EnviAuthenticationError("Authentication failed") from err
+            raise EnviAuthenticationError(f"Authentication failed: {err}") from err
 
     def _parse_jwt_expiry(self, token: str) -> datetime | None:
         """Extract real expiry from JWT token."""
@@ -190,6 +228,8 @@ class EnviApiClient:
                             continue  # Retry the request
                         else:
                             _LOGGER.error("Authentication failed after retry")
+                            self.token = None
+                            self.token_expires = None
                             raise EnviAuthenticationError("Authentication failed")
                     
                     # Handle rate limiting (429)
@@ -266,6 +306,27 @@ class EnviApiClient:
             raise EnviApiError(f"Request failed after {MAX_RETRIES + 1} attempts: {last_exception}") from last_exception
         raise EnviApiError("Request failed - unknown error")
 
+    def _validate_device_id(self, device_id: str) -> str:
+        """Validate and normalize device ID.
+        
+        Args:
+            device_id: Device identifier to validate
+            
+        Returns:
+            Normalized device ID string
+            
+        Raises:
+            EnviDeviceError: If device_id is invalid
+        """
+        if not device_id:
+            raise EnviDeviceError("Device ID cannot be empty")
+        if not isinstance(device_id, str):
+            device_id = str(device_id)
+        device_id = device_id.strip()
+        if not device_id:
+            raise EnviDeviceError("Device ID cannot be empty")
+        return device_id
+
     async def fetch_all_device_ids(self) -> list[str]:
         """Fetch all device IDs with validation."""
         data = await self._request("GET", ENDPOINTS["device_list"])
@@ -290,6 +351,7 @@ class EnviApiClient:
 
     async def get_device_state(self, device_id: str) -> dict:
         """Get device state with validation."""
+        device_id = self._validate_device_id(device_id)
         endpoint = ENDPOINTS["device_get"].format(device_id=device_id)
         data = await self._request("GET", endpoint)
         device_data = data.get("data", {})
@@ -306,6 +368,7 @@ class EnviApiClient:
 
     async def update_device(self, device_id: str, payload: dict) -> dict:
         """Update device temperature and/or state."""
+        device_id = self._validate_device_id(device_id)
         endpoint = ENDPOINTS["device_update"].format(device_id=device_id)
         return await self._request("PATCH", endpoint, json=payload)
 
@@ -323,6 +386,7 @@ class EnviApiClient:
             EnviApiError: If the API request fails
             EnviDeviceError: If device-specific error occurs
         """
+        device_id = self._validate_device_id(device_id)
         endpoint = ENDPOINTS["device_update"].format(device_id=device_id)
         return await self._request("PATCH", endpoint, json={"temperature": temperature})
 
@@ -340,11 +404,13 @@ class EnviApiClient:
             EnviApiError: If the API request fails
             EnviDeviceError: If device-specific error occurs
         """
+        device_id = self._validate_device_id(device_id)
         endpoint = ENDPOINTS["device_update"].format(device_id=device_id)
         return await self._request("PATCH", endpoint, json={"state": state})
 
     async def set_mode(self, device_id: str, mode: int) -> dict:
         """Set device mode (1 = heat, 3 = auto, etc.)."""
+        device_id = self._validate_device_id(device_id)
         endpoint = ENDPOINTS["device_update"].format(device_id=device_id)
         return await self._request("PATCH", endpoint, json={"mode": mode})
 
@@ -386,71 +452,6 @@ class EnviApiClient:
             if isinstance(schedule, dict) and schedule.get("id") == schedule_id:
                 return schedule
         raise EnviDeviceError(f"Schedule {schedule_id} not found")
-
-    async def create_schedule(self, schedule_data: dict) -> dict:
-        """Create a new schedule.
-        
-        Args:
-            schedule_data: Dictionary containing schedule configuration:
-                - device_id: Device ID (required)
-                - enabled: bool - Whether schedule is enabled
-                - name: str (optional) - Schedule name
-                - temperature: float - Target temperature
-                - times: list (optional) - List of time entries
-                
-        Returns:
-            API response dictionary with created schedule data
-            
-        Raises:
-            EnviApiError: If schedule creation fails
-        """
-        if not isinstance(schedule_data, dict):
-            raise EnviApiError("Schedule data must be a dictionary")
-        
-        if "device_id" not in schedule_data:
-            raise EnviApiError("device_id is required for schedule creation")
-        
-        return await self._request("POST", ENDPOINTS["schedule_add"], json=schedule_data)
-
-    async def update_schedule(self, schedule_id: int, schedule_data: dict) -> dict:
-        """Update an existing schedule.
-        
-        Args:
-            schedule_id: Schedule ID to update
-            schedule_data: Dictionary containing schedule updates:
-                - enabled: bool (optional) - Whether schedule is enabled
-                - name: str (optional) - Schedule name
-                - temperature: float (optional) - Target temperature
-                - times: list (optional) - List of time entries
-                
-        Returns:
-            API response dictionary with updated schedule data
-            
-        Raises:
-            EnviApiError: If schedule update fails
-            EnviDeviceError: If schedule is not found
-        """
-        if not isinstance(schedule_data, dict):
-            raise EnviApiError("Schedule data must be a dictionary")
-        
-        endpoint = ENDPOINTS["schedule_update"].format(schedule_id=schedule_id)
-        return await self._request("PUT", endpoint, json=schedule_data)
-
-    async def delete_schedule(self, schedule_id: int) -> dict:
-        """Delete a schedule.
-        
-        Args:
-            schedule_id: Schedule ID to delete
-            
-        Returns:
-            API response dictionary
-            
-        Raises:
-            EnviApiError: If schedule deletion fails
-            EnviDeviceError: If schedule is not found
-        """
-        endpoint = ENDPOINTS["schedule_delete"].format(schedule_id=schedule_id)
-        return await self._request("DELETE", endpoint)
 
     # Device Settings
     async def get_night_light_setting(self, device_id: str) -> dict:
@@ -512,72 +513,6 @@ class EnviApiClient:
         # Use the working update endpoint
         endpoint = ENDPOINTS["device_update"].format(device_id=device_id)
         return await self._request("PATCH", endpoint, json={"display_setting": payload})
-
-    # Device Control Features
-    # NOTE: These settings cannot be updated through the API.
-    # The update-temperature endpoint rejects these fields with "is not allowed" error.
-    # These settings appear to be read-only through the API and can only be changed
-    # through the mobile app or device interface.
-    
-    async def set_child_lock(self, device_id: str, enabled: bool) -> dict:
-        """Enable or disable child lock.
-        
-        NOTE: This setting cannot be changed through the API.
-        The API endpoint rejects child_lock_setting with "is not allowed" error.
-        This setting can only be changed through the mobile app.
-        """
-        raise EnviApiError(
-            "Child lock setting cannot be changed through the API. "
-            "Please use the Envi mobile app to change this setting."
-        )
-
-    async def set_freeze_protect(self, device_id: str, enabled: bool) -> dict:
-        """Enable or disable freeze protection.
-        
-        NOTE: This setting cannot be changed through the API.
-        The API endpoint rejects freeze_protect_setting with "is not allowed" error.
-        This setting can only be changed through the mobile app.
-        """
-        raise EnviApiError(
-            "Freeze protection setting cannot be changed through the API. "
-            "Please use the Envi mobile app to change this setting."
-        )
-
-    async def set_notification_setting(self, device_id: str, enabled: bool) -> dict:
-        """Enable or disable notifications.
-        
-        NOTE: This setting cannot be changed through the API.
-        The API endpoint rejects notification_setting with "is not allowed" error.
-        This setting can only be changed through the mobile app.
-        """
-        raise EnviApiError(
-            "Notification setting cannot be changed through the API. "
-            "Please use the Envi mobile app to change this setting."
-        )
-
-    async def set_hold(self, device_id: str, enabled: bool) -> dict:
-        """Set temporary hold (prevents schedule changes).
-        
-        NOTE: This setting cannot be changed through the API.
-        The API endpoint rejects is_hold with "is not allowed" error.
-        This setting can only be changed through the mobile app.
-        """
-        raise EnviApiError(
-            "Hold setting cannot be changed through the API. "
-            "Please use the Envi mobile app to change this setting."
-        )
-
-    async def set_permanent_hold(self, device_id: str, enabled: bool) -> dict:
-        """Set permanent hold (prevents all automatic changes).
-        
-        NOTE: This setting cannot be changed through the API.
-        The API endpoint rejects permanent_hold with "is not allowed" error.
-        This setting can only be changed through the mobile app.
-        """
-        raise EnviApiError(
-            "Permanent hold setting cannot be changed through the API. "
-            "Please use the Envi mobile app to change this setting."
-        )
 
     # Utility Methods
     async def get_device_full_info(self, device_id: str) -> dict:

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run a local Home Assistant at http://localhost:8123 with this integration loaded.
+set -e
+cd "$(dirname "$0")/.."
+VENV="${VENV:-$HOME/.venvs/smart_envi}"  # outside the repo (it is synced to Google Drive)
+
+mkdir -p config
+# Let HA find the integration without copying it into config/custom_components.
+export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
+
+exec "$VENV"/bin/hass --config "${PWD}/config" --debug

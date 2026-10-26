@@ -1,0 +1,4 @@
+# Normalize line endings so scripts run in WSL/Linux/devcontainers
+* text=auto eol=lf
+*.png binary
+*.ps1 text eol=crlf

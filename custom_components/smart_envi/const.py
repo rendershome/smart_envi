@@ -18,6 +18,9 @@ MAX_API_TIMEOUT = 60  # seconds
 # Temperature limits in Fahrenheit
 MIN_TEMPERATURE = 50
 MAX_TEMPERATURE = 86
+# The same limits for heaters set to Celsius
+MIN_TEMPERATURE_C = 10
+MAX_TEMPERATURE_C = 30
 
 # API Configuration
 BASE_URL = "https://app-apis.enviliving.com/apis/v1"
@@ -32,8 +35,4 @@ ENDPOINTS = {
     "device_get": "device/{device_id}",
     "device_update": "device/update-temperature/{device_id}",
     "schedule_list": "schedule/list",
-    "schedule_add": "schedule/add",
-    "schedule_get": "schedule/{schedule_id}",
-    "schedule_update": "schedule/{schedule_id}",
-    "schedule_delete": "schedule/{schedule_id}",
 }

@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import EnviApiClient, EnviApiError, EnviAuthenticationError, EnviDeviceError
 from .const import DOMAIN, SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+
+# Schedules change rarely, so fetch them less often than device state.
+SCHEDULE_REFRESH_INTERVAL = timedelta(minutes=10)
 
 
 class EnviDataUpdateCoordinator(DataUpdateCoordinator):
@@ -42,6 +46,8 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
         self.entry_id = entry_id
         self.device_data: dict[str, dict] = {}
         self.device_ids: list[str] = []
+        self.schedules: dict[int, dict] = {}
+        self._schedules_fetched_at: datetime | None = None
 
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from Envi API.
@@ -88,11 +94,14 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
             for i, device_id in enumerate(device_ids):
                 result = results[i]
                 if isinstance(result, Exception):
-                    failed_devices.append((device_id, str(result)))
+                    exc_type = type(result).__name__
+                    exc_msg = str(result)
+                    failed_devices.append((device_id, exc_type, exc_msg))
                     _LOGGER.warning(
-                        "Error fetching device %s: %s. Keeping cached data if available.",
+                        "Error fetching device %s: %s: %s. Keeping cached data if available.",
                         device_id,
-                        result,
+                        exc_type,
+                        exc_msg,
                     )
                     # Keep previous data if available (graceful degradation)
                     if device_id in self.device_data:
@@ -120,6 +129,8 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Store the data
             self.device_data = device_data
+
+            await self._async_refresh_schedules()
 
             # Only fail if we have no data at all (not even cached)
             if not device_data:
@@ -217,6 +228,32 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
             # Unexpected errors - log with full context
             _LOGGER.warning("Unexpected error fetching device %s: %s", device_id_str, err, exc_info=True)
             raise
+
+    async def _async_refresh_schedules(self) -> None:
+        """Refresh the schedule list if it is stale. Failures keep the old list."""
+        now = dt_util.utcnow()
+        if (
+            self._schedules_fetched_at is not None
+            and now - self._schedules_fetched_at < SCHEDULE_REFRESH_INTERVAL
+        ):
+            return
+        try:
+            schedules = await self.client.get_schedule_list()
+        except EnviApiError as err:
+            _LOGGER.warning("Could not refresh schedules, keeping previous list: %s", err)
+            return
+        self.schedules = {
+            s["id"]: s for s in schedules if isinstance(s, dict) and s.get("id") is not None
+        }
+        self._schedules_fetched_at = now
+
+    def get_device_schedule(self, device_id: str) -> dict | None:
+        """Return the full schedule assigned to a device, if any."""
+        data = self.get_device_data(device_id) or {}
+        schedule = data.get("schedule")
+        if not isinstance(schedule, dict):
+            return None
+        return self.schedules.get(schedule.get("schedule_id"))
 
     def get_device_data(self, device_id: str) -> dict | None:
         """Get cached device data for a specific device.

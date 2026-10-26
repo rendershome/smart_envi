@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 ENV/
 env/
 
@@ -38,12 +39,16 @@ Thumbs.db
 
 # Home Assistant
 .homeassistant/
+# Local dev instance: keep configuration.yaml, ignore everything HA generates
+config/*
+!config/configuration.yaml
 
 # Logs
 *.log
 
-# Testing
+# Testing / linting
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -52,14 +57,19 @@ htmlcov/
 *.bak
 *.swp
 
-# Test scripts (may contain credentials - keep local only)
-test_*.py
-*_test.py
-test_api*.py
+# Ad-hoc test scripts in the repo root (may contain credentials - keep local only)
+# The tests/ directory is tracked.
+/test_*.py
+# Raw API responses from scripts/live-check --dump
+/api_dump*.json
+# Envi app traffic recorded by scripts/envi_capture.py
+/api_capture*.jsonl
+/*_test.py
 
 # Credentials and sensitive data
 *.env
 .env.*
+!.env.example
 secrets.yaml
 secrets.json
 *credentials*
