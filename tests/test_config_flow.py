@@ -77,6 +77,7 @@ async def test_user_flow_already_configured(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
 
+
 async def test_reauth_flow(
     hass: HomeAssistant, mock_client: AsyncMock, config_entry
 ) -> None:
@@ -157,3 +158,43 @@ async def test_reconfigure_to_existing_account_aborts(
     assert result["reason"] == "already_configured"
     assert config_entry.data["password"] == PASSWORD
 
+
+async def test_options_schedule_viewer(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """Schedules can be viewed (all day groups, heaters using them) but not changed."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["integration_options", "schedules"]
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "schedules"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "schedules"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"schedule_id": "777"}
+    )
+    assert result["step_id"] == "view_schedule"
+    placeholders = result["description_placeholders"]
+    assert placeholders["schedule_name"] == "Main Floor"
+    assert placeholders["heaters"] == "Living Room"
+    assert placeholders["schedule"] == (
+        "**Mon, Tue, Wed, Thu, Fri**\n"
+        "- 19:00  Evenings: 68°F\n"
+        "- 21:00  Overnight: 62°F\n"
+        "\n"
+        "**Sat, Sun**\n"
+        "- 07:00  Morning: 68°F\n"
+        "- 21:00  Overnight: 62°F"
+    )
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "schedule_viewed"
+    assert config_entry.options == {}

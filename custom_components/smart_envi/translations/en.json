@@ -50,10 +50,10 @@
     "step": {
       "init": {
         "title": "Smart Envi Options",
-        "description": "Choose what you want to configure.",
+        "description": "Choose what you want to do.",
         "menu_options": {
-          "integration": "Integration Settings (Scan Interval, API Timeout)",
-          "schedules": "Manage Schedules"
+          "integration_options": "Integration settings (polling interval, API timeout)",
+          "schedules": "View schedules"
         }
       },
       "integration_options": {
@@ -68,65 +68,23 @@
           "api_timeout": "Maximum time to wait for API responses.\n\n• Default: 15 seconds (recommended)\n• Range: 5-60 seconds\n• Increase if you have slow internet or frequent timeout errors\n• Decrease if you want faster failure detection"
         }
       },
-      "select_device": {
-        "title": "Select Device",
-        "description": "Choose a heater to edit its schedule.",
+      "schedules": {
+        "title": "View schedules",
+        "description": "Pick a schedule to see its days, times and temperatures. Schedules are edited in the Envi app; each heater's schedule also appears as a calendar in Home Assistant.",
         "data": {
-          "entity_id": "Heater"
-        },
-        "data_description": {
-          "entity_id": "Select the Smart Envi heater whose schedule you want to edit."
-        }
-      },
-      "schedule_options": {
-        "title": "Manage Schedules",
-        "description": "Choose how you want to manage schedules.",
-        "data": {
-          "schedule_type": "Schedule Management Type"
-        },
-        "data_description": {
-          "schedule_type": "Choose how you want to manage schedules:\n• Device Schedule: Edit schedule for a specific heater\n• All Schedules: View and manage all schedules from your account"
-        }
-      },
-      "edit_schedule": {
-        "title": "Edit Schedule",
-        "description": "Configure the heating schedule for this device. Set times when the heater should automatically change temperature.",
-        "data": {
-          "enabled": "Enable Schedule",
-          "name": "Schedule Name",
-          "time_entries": "Time Entries"
-        },
-        "data_description": {
-          "enabled": "Turn the schedule on or off. When disabled, the schedule will not run and the heater will maintain its current setting.",
-          "name": "Optional name for this schedule (e.g., 'Weekday Schedule', 'Weekend Schedule').",
-          "time_entries": "Schedule time entries in format: HH:MM:SS,temperature,enabled\n\nSeparate multiple entries with | (pipe character)\nTemperature range: 50-86°F\nEnabled: true or false\n\n📋 EXAMPLES:\n• Single entry: 08:00:00,72,true\n• Two entries: 08:00:00,72,true|18:00:00,68,true\n\n📅 SAMPLE SCHEDULES:\n• Morning/Evening:\n  07:00:00,72,true|22:00:00,68,true\n\n• Work Day (away during day):\n  06:00:00,70,true|08:00:00,62,true|17:00:00,70,true|22:00:00,65,true\n\n• Weekend (sleep in):\n  08:00:00,70,true|23:00:00,68,true\n\n• All Day Comfort:\n  00:00:00,70,true"
-        }
-      },
-      "list_schedules": {
-        "title": "Manage All Schedules",
-        "description": "View and edit all schedules from your Envi account. Select a schedule to edit or delete it.",
-        "data": {
-          "schedule_id": "Select Schedule"
-        },
-        "data_description": {
-          "schedule_id": "Choose a schedule to view, edit, or delete. Schedules show enabled (✓) or disabled (✗) status along with the device name."
+          "schedule_id": "Schedule"
         }
       },
       "view_schedule": {
-        "title": "Schedule Details",
-        "description": "Schedule: {schedule_name} for {device_name}. Status: {enabled}. {time_count} time entries.",
-        "data": {
-          "action": "Action"
-        },
-        "data_description": {
-          "action": "Choose to edit or delete this schedule."
-        }
+        "title": "{schedule_name}",
+        "description": "Used by: {heaters}\n\n{schedule}\n\nTo change this schedule, use the Envi app."
       }
     },
-    "error": {
-      "invalid_time_format": "Invalid time format. Use HH:MM:SS (e.g., 08:00:00)",
-      "invalid_temperature": "Temperature must be between 50 and 86°F",
-      "schedule_update_failed": "Failed to update schedule. Please try again."
+    "abort": {
+      "schedule_viewed": "No changes made. Schedules are edited in the Envi app.",
+      "no_schedules": "No schedules were found in your Envi account.",
+      "failed_to_load_schedules": "Could not load schedules from the Envi API. Try again later.",
+      "api_client_unavailable": "The Envi connection isn't ready yet. Try again in a moment."
     }
   },
   "entity": {

@@ -35,8 +35,4 @@ ENDPOINTS = {
     "device_get": "device/{device_id}",
     "device_update": "device/update-temperature/{device_id}",
     "schedule_list": "schedule/list",
-    "schedule_add": "schedule/add",
-    "schedule_get": "schedule/{schedule_id}",
-    "schedule_update": "schedule/{schedule_id}",
-    "schedule_delete": "schedule/{schedule_id}",
 }

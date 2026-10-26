@@ -102,115 +102,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         
         _LOGGER.info("Refresh complete: %s devices refreshed, %s failed", refreshed_count, failed_count)
 
-    async def set_heater_schedule(call: ServiceCall) -> None:
-        """Set a schedule for a Smart Envi heater.
-        
-        Schedule data structure:
-        - enabled: bool - Whether the schedule is enabled
-        - name: str (optional) - Schedule name
-        - times: list (optional) - List of schedule times with temperature
-          - time: str - Time in HH:MM:SS format
-          - temperature: float - Target temperature (50-86°F)
-          - enabled: bool - Whether this time slot is enabled
-        
-        Args:
-            call: Service call with entity_id and schedule data
-            
-        Raises:
-            HomeAssistantError: If entity_id is missing, device_id cannot be determined,
-                API client is unavailable, or schedule data is invalid
-        """
-        entity_id = call.data.get(ATTR_ENTITY_ID)
-        schedule_data = call.data.get("schedule", {})
-        
-        if not entity_id:
-            raise HomeAssistantError("Entity ID is required")
-        
-        if not schedule_data:
-            raise HomeAssistantError("Schedule data is required")
-        
-        device_id = _get_device_id_from_entity(hass, entity_id)
-        if not device_id:
-            raise HomeAssistantError(f"Could not determine device_id for entity {entity_id}")
-        
-        client = _get_client_from_domain(hass)
-        if not client:
-            raise HomeAssistantError("Smart Envi integration not configured or API client unavailable")
-        
-        try:
-            # Validate schedule data structure
-            if not isinstance(schedule_data, dict):
-                raise HomeAssistantError("Schedule data must be a dictionary")
-            
-            # Validate enabled field if present
-            if "enabled" in schedule_data and not isinstance(schedule_data["enabled"], bool):
-                raise HomeAssistantError("Schedule 'enabled' field must be a boolean")
-            
-            # Validate times if present
-            if "times" in schedule_data:
-                if not isinstance(schedule_data["times"], list):
-                    raise HomeAssistantError("Schedule 'times' must be a list")
-                for time_entry in schedule_data["times"]:
-                    if not isinstance(time_entry, dict):
-                        raise HomeAssistantError("Each schedule time entry must be a dictionary")
-                    if "temperature" in time_entry:
-                        temp = time_entry["temperature"]
-                        if not isinstance(temp, (int, float)) or temp < 50 or temp > 86:
-                            raise HomeAssistantError(
-                                f"Schedule temperature must be between 50 and 86°F, got {temp}"
-                            )
-            
-            # Get current device data to find schedule_id
-            device_data = await client.get_device_state(device_id)
-            schedule_info = device_data.get("schedule", {})
-            schedule_id = None
-            
-            if isinstance(schedule_info, dict):
-                schedule_id = schedule_info.get("schedule_id") or schedule_info.get("id")
-            
-            # Build schedule payload
-            # Include device_id for creation, schedule_id for updates
-            payload = schedule_data.copy()
-            
-            if schedule_id:
-                # Update existing schedule
-                _LOGGER.info("Updating schedule %s for device %s", schedule_id, device_id)
-                _LOGGER.debug("Schedule update payload: %s", payload)
-                await client.update_schedule(schedule_id, payload)
-                _LOGGER.info("Schedule %s updated successfully for device %s", schedule_id, device_id)
-            else:
-                # Create new schedule
-                _LOGGER.info("Creating new schedule for device %s", device_id)
-                payload["device_id"] = device_id
-                _LOGGER.debug("Schedule creation payload: %s", payload)
-                await client.create_schedule(payload)
-                _LOGGER.info("New schedule created successfully for device %s", device_id)
-            
-            # Refresh device data to get updated schedule info
-            # Find the coordinator that manages this device
-            domain_data = hass.data.get(DOMAIN, {})
-            for entry_id, _ in domain_data.items():
-                if entry_id == "services_setup":
-                    continue
-                coordinator_key = f"{DOMAIN}_coordinator_{entry_id}"
-                coordinator = domain_data.get(coordinator_key)
-                if coordinator and hasattr(coordinator, "async_refresh_device"):
-                    # Check if this coordinator manages our device
-                    if device_id in coordinator.device_ids:
-                        await coordinator.async_refresh_device(device_id)
-                        break
-            
-            _LOGGER.info("Schedule operation completed successfully for %s", entity_id)
-        except HomeAssistantError:
-            # Re-raise validation errors as-is
-            raise
-        except EnviApiError as e:
-            _LOGGER.error("API error setting schedule for %s: %s", entity_id, e, exc_info=True)
-            raise HomeAssistantError(f"Failed to set schedule: {e}") from e
-        except Exception as e:
-            _LOGGER.error("Unexpected error setting schedule for %s: %s", entity_id, e, exc_info=True)
-            raise HomeAssistantError(f"Failed to set schedule: {str(e)}") from e
-
     async def get_heater_schedule(call: ServiceCall) -> dict:
         """Get the current schedule for a Smart Envi heater.
         
@@ -394,25 +285,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     
     hass.services.async_register(
         DOMAIN,
-        "set_schedule",
-        set_heater_schedule,
-        schema=vol.Schema({
-            vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-            vol.Required("schedule"): vol.Schema({
-                vol.Required("enabled"): cv.boolean,
-                vol.Optional("times"): vol.All(cv.ensure_list, [
-                    vol.Schema({
-                        vol.Required("time"): cv.time,
-                        vol.Required("temperature"): vol.All(vol.Coerce(float), vol.Range(min=50, max=86)),
-                        vol.Required("enabled"): cv.boolean,
-                    })
-                ])
-            })
-        }),
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
         "get_schedule",
         get_heater_schedule,
         schema=vol.Schema({
@@ -441,7 +313,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Unload custom services."""
     hass.services.async_remove(DOMAIN, "refresh_all")
-    hass.services.async_remove(DOMAIN, "set_schedule")
     hass.services.async_remove(DOMAIN, "get_schedule")
     hass.services.async_remove(DOMAIN, "get_status")
     hass.services.async_remove(DOMAIN, "test_connection")
