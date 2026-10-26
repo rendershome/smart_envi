@@ -14,9 +14,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
-          # uv pip needs a venv; this creates .venv and puts it on PATH for later steps
-          activate-environment: true
+      # Create the venv by hand instead of activate-environment: homeassistant
+      # installs its own uv into .venv, which would then shadow setup-uv's uv
+      # and break its post-job cache prune.
       - name: Install dependencies
-        run: uv pip install -r requirements.txt
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
       - name: Run tests
-        run: pytest
+        run: .venv/bin/pytest
