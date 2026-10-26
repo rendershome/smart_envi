@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.smart_envi.api import EnviAuthenticationError
 from custom_components.smart_envi.const import DOMAIN
@@ -75,3 +76,125 @@ async def test_user_flow_already_configured(
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_reauth_flow(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """Reauth asks for a new password, validates it, and stores it."""
+    config_entry.add_to_hass(hass)
+
+    result = await config_entry.start_reauth_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+
+    mock_client.authenticate.side_effect = EnviAuthenticationError
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"password": "wrong"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+    mock_client.authenticate.side_effect = None
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"password": "new-password"}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert config_entry.data == {"username": USERNAME, "password": "new-password"}
+
+
+async def test_reconfigure_flow(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """Reconfigure can change the account and password."""
+    config_entry.add_to_hass(hass)
+
+    result = await config_entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    mock_client.authenticate.side_effect = TimeoutError
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"username": USERNAME, "password": "new-password"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+    mock_client.authenticate.side_effect = None
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"username": "Other@Example.com", "password": "new-password"},
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert config_entry.data == {
+        "username": "Other@Example.com",
+        "password": "new-password",
+    }
+    assert config_entry.unique_id == "other@example.com"
+    assert config_entry.title == "Smart Envi (Other@Example.com)"
+
+
+async def test_reconfigure_to_existing_account_aborts(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """Reconfigure cannot switch to an account that already has an entry."""
+    config_entry.add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="other@example.com",
+        data={"username": "other@example.com", "password": "x"},
+    ).add_to_hass(hass)
+
+    result = await config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"username": "other@example.com", "password": "new-password"},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert config_entry.data["password"] == PASSWORD
+
+
+async def test_options_schedule_viewer(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry
+) -> None:
+    """Schedules can be viewed (all day groups, heaters using them) but not changed."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["integration_options", "schedules"]
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "schedules"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "schedules"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"schedule_id": "777"}
+    )
+    assert result["step_id"] == "view_schedule"
+    placeholders = result["description_placeholders"]
+    assert placeholders["schedule_name"] == "Main Floor"
+    assert placeholders["heaters"] == "Living Room"
+    assert placeholders["schedule"] == (
+        "**Mon, Tue, Wed, Thu, Fri**\n"
+        "- 19:00  Evenings: 68°F\n"
+        "- 21:00  Overnight: 62°F\n"
+        "\n"
+        "**Sat, Sun**\n"
+        "- 07:00  Morning: 68°F\n"
+        "- 21:00  Overnight: 62°F"
+    )
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "schedule_viewed"
+    assert config_entry.options == {}

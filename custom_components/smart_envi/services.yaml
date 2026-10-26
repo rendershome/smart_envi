@@ -2,37 +2,6 @@ refresh_all:
   name: Refresh all heaters
   description: Fetch the latest state of every Smart Envi heater from the Envi cloud.
 
-set_schedule:
-  name: Set schedule
-  description: Set the heating schedule for a Smart Envi heater.
-  fields:
-    entity_id:
-      name: Heater
-      description: The Smart Envi climate entity to update.
-      required: true
-      selector:
-        entity:
-          integration: smart_envi
-          domain: climate
-    schedule:
-      name: Schedule
-      description: >-
-        Schedule definition with `enabled` (bool) and an optional list of
-        `times`, each with `time` (HH:MM:SS), `temperature` (50-86 °F) and
-        `enabled` (bool).
-      required: true
-      example: |
-        enabled: true
-        times:
-          - time: "07:00:00"
-            temperature: 72
-            enabled: true
-          - time: "22:00:00"
-            temperature: 68
-            enabled: true
-      selector:
-        object:
-
 get_schedule:
   name: Get schedule
   description: Get the current schedule for a Smart Envi heater.

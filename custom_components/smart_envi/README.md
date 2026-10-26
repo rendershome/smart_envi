@@ -49,12 +49,13 @@ Each heater automatically creates 5 binary sensors:
 #### 🛠️ Custom Services
 - `smart_envi.refresh_all`: Refresh all heaters via coordinator
 - `smart_envi.get_schedule`: Get current schedule for a heater
-- `smart_envi.set_schedule`: Create or update heating schedules
 - `smart_envi.get_status`: Get detailed device status
 - `smart_envi.test_connection`: Test API connection
-- `smart_envi.set_freeze_protect`: Enable/disable freeze protection (read-only via API)
-- `smart_envi.set_child_lock`: Enable/disable child lock (read-only via API)
-- `smart_envi.set_hold`: Set temporary hold (read-only via API)
+
+Schedules are view-only: the Envi API has no known endpoint for saving or
+deleting them, so edit them in the Envi app. In Home Assistant you can see them
+as a calendar per heater, through the integration's options ("View schedules"),
+or with `smart_envi.get_schedule`.
 
 ## 📋 Installation
 
@@ -124,44 +125,6 @@ times:
     temperature: 68
     enabled: true
 ```
-
-#### Set Heater Schedule
-Create or update a schedule for a heater. If the device already has a schedule, it will be updated. Otherwise, a new schedule will be created.
-
-**To edit an existing schedule:**
-1. First, use `smart_envi.get_schedule` to retrieve the current schedule
-2. Modify the schedule data as needed
-3. Use `smart_envi.set_schedule` to update it
-
-```yaml
-service: smart_envi.set_schedule
-data:
-  entity_id: climate.smart_envi_12345
-  schedule:
-    enabled: true
-    name: "My Schedule"  # Optional
-    times:
-      - time: "08:00:00"
-        temperature: 72
-        enabled: true
-      - time: "12:00:00"
-        temperature: 70
-        enabled: true
-      - time: "18:00:00"
-        temperature: 68
-        enabled: true
-      - time: "22:00:00"
-        temperature: 65
-        enabled: true
-```
-
-**Schedule Parameters:**
-- `enabled`: `true` or `false` - Whether the schedule is active
-- `name`: (optional) String - Name for the schedule
-- `times`: (optional) List of time entries, each containing:
-  - `time`: String in `HH:MM:SS` format (e.g., `"08:00:00"`)
-  - `temperature`: Float between 50-86°F
-  - `enabled`: `true` or `false` - Whether this time slot is active
 
 #### Get Heater Status
 ```yaml

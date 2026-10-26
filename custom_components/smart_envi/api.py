@@ -111,7 +111,19 @@ class EnviApiClient:
                 resp_text = await resp.text()
                 _LOGGER.debug("Envi login HTTP %s - %s", resp.status, _redact_sensitive_data(resp_text[:500]))
                 if resp.status != 200:
-                    raise EnviAuthenticationError(f"Login failed (HTTP {resp.status})")
+                    # The body is e.g. {"msgCode":5010,"msg":"Incorrect login credentials"};
+                    # surface msg/msgCode only, never the request payload (it holds the password).
+                    try:
+                        body = json.loads(resp_text)
+                    except ValueError:
+                        body = {}
+                    if not isinstance(body, dict):
+                        body = {}
+                    msg = body.get("msg") or "no message"
+                    msg_code = body.get("msgCode")
+                    raise EnviAuthenticationError(
+                        f"Login failed (HTTP {resp.status}, msgCode {msg_code}): {msg}"
+                    )
                 data = json.loads(resp_text)
                 if data.get("status") != "success":
                     msg = data.get("msg", "unknown error")
@@ -124,11 +136,17 @@ class EnviApiClient:
                     "Envi login successful - token valid until %s",
                     self.token_expires.strftime("%Y-%m-%d %H:%M"),
                 )
+        except EnviAuthenticationError as err:
+            # Keep the server's reason instead of hiding it behind a generic message.
+            self.token = None
+            self.token_expires = None
+            _LOGGER.error("Envi authentication failed: %s", err)
+            raise
         except Exception as err:
             self.token = None
             self.token_expires = None
             _LOGGER.error("Envi authentication failed", exc_info=True)
-            raise EnviAuthenticationError("Authentication failed") from err
+            raise EnviAuthenticationError(f"Authentication failed: {err}") from err
 
     def _parse_jwt_expiry(self, token: str) -> datetime | None:
         """Extract real expiry from JWT token."""
@@ -434,71 +452,6 @@ class EnviApiClient:
             if isinstance(schedule, dict) and schedule.get("id") == schedule_id:
                 return schedule
         raise EnviDeviceError(f"Schedule {schedule_id} not found")
-
-    async def create_schedule(self, schedule_data: dict) -> dict:
-        """Create a new schedule.
-        
-        Args:
-            schedule_data: Dictionary containing schedule configuration:
-                - device_id: Device ID (required)
-                - enabled: bool - Whether schedule is enabled
-                - name: str (optional) - Schedule name
-                - temperature: float - Target temperature
-                - times: list (optional) - List of time entries
-                
-        Returns:
-            API response dictionary with created schedule data
-            
-        Raises:
-            EnviApiError: If schedule creation fails
-        """
-        if not isinstance(schedule_data, dict):
-            raise EnviApiError("Schedule data must be a dictionary")
-        
-        if "device_id" not in schedule_data:
-            raise EnviApiError("device_id is required for schedule creation")
-        
-        return await self._request("POST", ENDPOINTS["schedule_add"], json=schedule_data)
-
-    async def update_schedule(self, schedule_id: int, schedule_data: dict) -> dict:
-        """Update an existing schedule.
-        
-        Args:
-            schedule_id: Schedule ID to update
-            schedule_data: Dictionary containing schedule updates:
-                - enabled: bool (optional) - Whether schedule is enabled
-                - name: str (optional) - Schedule name
-                - temperature: float (optional) - Target temperature
-                - times: list (optional) - List of time entries
-                
-        Returns:
-            API response dictionary with updated schedule data
-            
-        Raises:
-            EnviApiError: If schedule update fails
-            EnviDeviceError: If schedule is not found
-        """
-        if not isinstance(schedule_data, dict):
-            raise EnviApiError("Schedule data must be a dictionary")
-        
-        endpoint = ENDPOINTS["schedule_update"].format(schedule_id=schedule_id)
-        return await self._request("PUT", endpoint, json=schedule_data)
-
-    async def delete_schedule(self, schedule_id: int) -> dict:
-        """Delete a schedule.
-        
-        Args:
-            schedule_id: Schedule ID to delete
-            
-        Returns:
-            API response dictionary
-            
-        Raises:
-            EnviApiError: If schedule deletion fails
-            EnviDeviceError: If schedule is not found
-        """
-        endpoint = ENDPOINTS["schedule_delete"].format(schedule_id=schedule_id)
-        return await self._request("DELETE", endpoint)
 
     # Device Settings
     async def get_night_light_setting(self, device_id: str) -> dict:

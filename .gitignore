@@ -62,11 +62,14 @@ htmlcov/
 /test_*.py
 # Raw API responses from scripts/live-check --dump
 /api_dump*.json
+# Envi app traffic recorded by scripts/envi_capture.py
+/api_capture*.jsonl
 /*_test.py
 
 # Credentials and sensitive data
 *.env
 .env.*
+!.env.example
 secrets.yaml
 secrets.json
 *credentials*

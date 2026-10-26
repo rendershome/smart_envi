@@ -1,6 +1,9 @@
 """Check the integration's API client against the real Envi cloud and heaters.
 
-Reads credentials from ENVI_USERNAME / ENVI_PASSWORD, or prompts for them.
+Reads credentials from ENVI_USERNAME / ENVI_PASSWORD. If they aren't set in
+the environment, they're loaded from the first env file that exists:
+~/.config/smart_envi/.env (outside the repo, which is synced to Google
+Drive), then .env in the repo root. Otherwise it prompts for them.
 Nothing is printed or stored that includes the password or the auth token.
 
 Default is read-only. With --write, each heater's current target temperature
@@ -11,6 +14,7 @@ With --dump, the full raw API responses (device list, every heater's state,
 schedules) are written to api_dump.json in the repo root, with personal
 fields such as serial numbers, WiFi names, MAC/IP addresses and coordinates
 blanked out. The file is git-ignored.
+
 """
 from __future__ import annotations
 
@@ -37,7 +41,27 @@ from custom_components.smart_envi.const import ENDPOINTS  # noqa: E402
 OK = "  ok  "
 FAIL = "  FAIL"
 
-DUMP_PATH = Path(__file__).resolve().parent.parent / "api_dump.json"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DUMP_PATH = REPO_ROOT / "api_dump.json"
+ENV_FILES = (Path.home() / ".config" / "smart_envi" / ".env", REPO_ROOT / ".env")
+
+
+def _load_env_file() -> Path | None:
+    """Load KEY=VALUE lines from the first env file found. Real env vars win."""
+    for path in ENV_FILES:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.removeprefix("export ").split("=", 1)
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]
+            os.environ.setdefault(key.strip(), value)
+        return path
+    return None
 # Keys whose values are personal or identifying. Long fragments match anywhere
 # in the key; short ones only as a whole word (so "lat" hits "lat" but not "relative").
 SENSITIVE_FRAGMENTS = (
@@ -106,7 +130,7 @@ async def main(username: str, password: str, write: bool, dump: bool) -> int:
                 f"room {d.get('ambient_temperature')}°{unit}, "
                 f"target {d.get('current_temperature')}°{unit}, "
                 f"mode {d.get('current_mode')}, "
-                f"online={d.get('status') == 1}, "
+                f"online={d.get('device_status') == 1}, "
                 f"model {d.get('model_no')}, fw {d.get('firmware_version')}"
             )
 
@@ -134,7 +158,7 @@ async def main(username: str, password: str, write: bool, dump: bool) -> int:
             print(f"{OK} schedules: {len(schedules)}")
             for s in schedules:
                 events = sum(len(g.get("events", [])) for g in s.get("schedule_data", []) or [])
-                print(f"        - {s.get('name') or 'Unnamed'!r} (heater {s.get('device_id')}): {events} event(s)")
+                print(f"        - {s.get('name') or 'Unnamed'!r} (id {s.get('id')}): {events} event(s)")
         except EnviApiError as err:
             print(f"{FAIL} schedules: {err}")
             failures += 1
@@ -154,6 +178,9 @@ if __name__ == "__main__":
     parser.add_argument("--dump", action="store_true",
                         help="save raw API responses, with personal fields redacted, to api_dump.json")
     args = parser.parse_args()
+    env_file = _load_env_file()
+    if env_file:
+        print(f"Using credentials from {env_file}")
     username = os.environ.get("ENVI_USERNAME") or input("Envi email: ")
     password = os.environ.get("ENVI_PASSWORD") or getpass.getpass("Envi password: ")
     sys.exit(asyncio.run(main(username, password, args.write, args.dump)))

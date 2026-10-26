@@ -35,8 +35,10 @@ async def test_setup_creates_entities(
     assert climate.attributes["current_temperature"] == 68
     assert climate.attributes["temperature"] == 72
 
-    for service in ("refresh_all", "set_schedule", "get_schedule", "get_status", "test_connection"):
+    for service in ("refresh_all", "get_schedule", "get_status", "test_connection"):
         assert hass.services.has_service(DOMAIN, service)
+    # Saving schedules isn't supported by the API (schedule/{id} is a 404)
+    assert not hass.services.has_service(DOMAIN, "set_schedule")
 
 
 async def test_heater_entity_uses_device_name(

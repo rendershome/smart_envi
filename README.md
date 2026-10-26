@@ -63,8 +63,10 @@ Control your heaters through the climate entities:
 
 - `smart_envi.refresh_all`: Refresh all heaters
 - `smart_envi.get_status`: Get detailed device status
-- `smart_envi.set_schedule`: Set heating schedules
+- `smart_envi.get_schedule`: Get a heater's current schedule
 - `smart_envi.test_connection`: Test API connection
+
+Each heater also gets a **Schedule** calendar and a **Next Schedule Change** sensor. Schedules are view-only in Home Assistant (the Envi API offers no way to save them); edit them in the Envi app.
 
 See the [full documentation](custom_components/smart_envi/README.md) for detailed usage examples.
 
