@@ -1,6 +1,6 @@
 [project]
 name = "smart_envi"
-version = "2.1.0-dev"
+version = "2.1.0"
 description = "Home Assistant custom integration for Envi Smart Heaters"
 requires-python = ">=3.13"
 
