@@ -20,6 +20,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EnviApiClient, EnviAuthenticationError
@@ -64,7 +65,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = EnviDataUpdateCoordinator(hass, client, entry.entry_id, scan_interval)
     hass.data[DOMAIN][f"{DOMAIN}_coordinator_{entry.entry_id}"] = coordinator
     await coordinator.async_config_entry_first_refresh()
-    
+    _async_migrate_to_serial_keys(hass, entry, coordinator)
+
     # Set up options update listener
     entry.async_on_unload(entry.add_update_listener(async_update_options))
     
@@ -75,6 +77,104 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+def _async_migrate_to_serial_keys(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: EnviDataUpdateCoordinator
+) -> None:
+    """Re-key each heater's devices and entities on its serial number.
+
+    Entities used to be keyed on the Envi device id, which changes whenever a
+    heater is re-added in the Envi app, so a heater could end up with several
+    devices and entity sets. For each heater this keeps one device (the
+    serial-keyed one if it exists, otherwise the oldest enabled one, which
+    carries the area, history and any renames) with one entity per type,
+    preferring that device's own entities, and removes the rest.
+    Runs on every setup, so it also picks up anything created before the
+    heater's serial was known.
+    """
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+
+    for device_id in coordinator.device_ids:
+        serial = coordinator.device_key(device_id)
+        if serial == device_id:
+            continue
+
+        # Every device registered for this heater, under any id it has had
+        group = []
+        for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+            keys = {value for domain, value in device.identifiers if domain == DOMAIN}
+            if keys & {serial, device_id} or device.serial_number == serial:
+                group.append((device, keys))
+        if not group:
+            continue
+        old_keys = set().union(*(keys for _, keys in group)) - {serial}
+        if not old_keys:
+            continue
+
+        keeper = next(
+            (device for device, keys in group if serial in keys),
+            min(
+                (device for device, _ in group),
+                key=lambda d: (d.disabled_by is not None, d.created_at),
+            ),
+        )
+
+        # Group this heater's entities by type: the unique_id after the key
+        by_type: dict[str, list[er.RegistryEntry]] = {}
+        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+            for key in old_keys | {serial}:
+                prefix = f"{DOMAIN}_{key}"
+                if entity.unique_id == prefix or entity.unique_id.startswith(f"{prefix}_"):
+                    by_type.setdefault(entity.unique_id[len(prefix):], []).append(entity)
+                    break
+
+        for suffix, entities in by_type.items():
+            new_unique_id = f"{DOMAIN}_{serial}{suffix}"
+            kept = next(
+                (e for e in entities if e.unique_id == new_unique_id),
+                min(
+                    entities,
+                    key=lambda e: (e.device_id != keeper.id, e.disabled_by is not None, e.created_at),
+                ),
+            )
+            for entity in entities:
+                if entity is not kept:
+                    ent_reg.async_remove(entity.entity_id)
+            # Entities only hidden because their old device was disabled come back
+            disabled_by = kept.disabled_by
+            if disabled_by is er.RegistryEntryDisabler.DEVICE and keeper.disabled_by is None:
+                disabled_by = None
+            ent_reg.async_update_entity(
+                kept.entity_id,
+                new_unique_id=new_unique_id,
+                device_id=keeper.id,
+                disabled_by=disabled_by,
+            )
+
+        dev_reg.async_update_device(keeper.id, new_identifiers={(DOMAIN, serial)})
+        for device, _ in group:
+            if device.id != keeper.id:
+                dev_reg.async_remove_device(device.id)
+        _LOGGER.info(
+            "Merged heater %s (Envi ids %s) into one device keyed on its serial",
+            serial,
+            ", ".join(sorted(old_keys)),
+        )
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow deleting a heater that is no longer in the Envi account."""
+    coordinator = hass.data.get(DOMAIN, {}).get(f"{DOMAIN}_coordinator_{entry.entry_id}")
+    if coordinator is None:
+        return True
+    live = {coordinator.device_key(device_id) for device_id in coordinator.device_ids}
+    return not any(
+        domain == DOMAIN and value in live for domain, value in device_entry.identifiers
+    )
 
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:

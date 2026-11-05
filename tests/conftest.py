@@ -12,11 +12,12 @@ from custom_components.smart_envi.const import DOMAIN
 USERNAME = "user@example.com"
 PASSWORD = "test-password"
 DEVICE_ID = "12345"
+SERIAL = "SN123"
 
 DEVICE_STATE = {
     "id": 12345,
     "name": "Living Room",
-    "serial_no": "SN123",
+    "serial_no": SERIAL,
     "model_no": "EH-1",
     "firmware_version": "1.2.3",
     "temperature_unit": "F",

@@ -76,10 +76,11 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         self.coordinator = coordinator
         self.client = coordinator.client
         self.device_id = str(device_id)
+        self.device_key = coordinator.device_key(self.device_id)
         
         # Set defaults - will be updated by _update_from_coordinator
         self._device_name = f"Smart Envi {device_id}"
-        self._attr_unique_id = f"{DOMAIN}_{device_id}"
+        self._attr_unique_id = f"{DOMAIN}_{self.device_key}"
         self._temperature_unit_api = "F"
         self._current_temperature = None
         self._target_temperature = None
@@ -240,7 +241,7 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
             device_name = f"{device_name} ({location})"
         
         return DeviceInfo(
-            identifiers={(DOMAIN, str(self.device_id))},
+            identifiers={(DOMAIN, self.device_key)},
             name=device_name,
             manufacturer="EHEAT",
             model=model,
