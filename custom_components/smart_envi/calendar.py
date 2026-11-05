@@ -26,8 +26,9 @@ class EnviScheduleCalendar(CoordinatorEntity[EnviDataUpdateCoordinator], Calenda
     def __init__(self, coordinator: EnviDataUpdateCoordinator, device_id: str) -> None:
         super().__init__(coordinator)
         self.device_id = str(device_id)
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_schedule_calendar"
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, self.device_id)})
+        self.device_key = coordinator.device_key(self.device_id)
+        self._attr_unique_id = f"{DOMAIN}_{self.device_key}_schedule_calendar"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, self.device_key)})
 
     @property
     def available(self) -> bool:

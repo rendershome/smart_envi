@@ -38,9 +38,10 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.device_id = str(device_id)
+        self.device_key = coordinator.device_key(self.device_id)
         self.sensor_type = sensor_type
         self._device_name = device_name
-        self._attr_unique_id = f"{DOMAIN}_{device_id}_{sensor_type}"
+        self._attr_unique_id = f"{DOMAIN}_{self.device_key}_{sensor_type}"
         self._attr_name = f"{device_name} {self._get_sensor_name()}"
 
     def _get_sensor_name(self) -> str:
@@ -64,7 +65,7 @@ class EnviSensor(CoordinatorEntity, SensorEntity):
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self.device_id)},
+            identifiers={(DOMAIN, self.device_key)},
             name=self._device_name,
             manufacturer="EHEAT",
         )

@@ -255,6 +255,16 @@ class EnviDataUpdateCoordinator(DataUpdateCoordinator):
             return None
         return self.schedules.get(schedule.get("schedule_id"))
 
+    def device_key(self, device_id: str) -> str:
+        """Return the stable key for a heater: its serial number.
+
+        Envi gives a heater a new device id whenever it is re-added in the Envi
+        app, so entities and devices are keyed on the serial instead. Falls back
+        to the device id when the serial isn't known yet.
+        """
+        data = self.get_device_data(device_id) or {}
+        return str(data.get("serial_no") or device_id)
+
     def get_device_data(self, device_id: str) -> dict | None:
         """Get cached device data for a specific device.
         

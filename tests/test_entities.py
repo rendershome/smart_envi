@@ -12,7 +12,7 @@ import pytest
 
 from custom_components.smart_envi.const import DOMAIN
 
-from .conftest import DEVICE_ID, DEVICE_STATE
+from .conftest import DEVICE_ID, DEVICE_STATE, SERIAL
 
 
 def _entity_id(hass: HomeAssistant, platform: str, unique_id: str) -> str:
@@ -46,7 +46,7 @@ async def test_celsius_heater_reports_native_unit(
     hass.config.units = METRIC_SYSTEM
     await _setup(hass, config_entry)
 
-    state = hass.states.get(_entity_id(hass, "climate", f"{DOMAIN}_{DEVICE_ID}"))
+    state = hass.states.get(_entity_id(hass, "climate", f"{DOMAIN}_{SERIAL}"))
     assert state.attributes["current_temperature"] == 18
     assert state.attributes["temperature"] == 20
     assert state.attributes["min_temp"] == 10
@@ -58,7 +58,7 @@ async def test_celsius_heater_set_temperature_sends_whole_degrees(
 ) -> None:
     hass.config.units = METRIC_SYSTEM
     await _setup(hass, config_entry)
-    entity_id = _entity_id(hass, "climate", f"{DOMAIN}_{DEVICE_ID}")
+    entity_id = _entity_id(hass, "climate", f"{DOMAIN}_{SERIAL}")
 
     await hass.services.async_call(
         "climate", "set_temperature", {"entity_id": entity_id, "temperature": 21}, blocking=True
@@ -73,9 +73,9 @@ async def test_offline_heater_is_unavailable(
     mock_client.get_device_state.return_value = {**DEVICE_STATE, "device_status": 0}
     await _setup(hass, config_entry)
 
-    climate = hass.states.get(_entity_id(hass, "climate", f"{DOMAIN}_{DEVICE_ID}"))
+    climate = hass.states.get(_entity_id(hass, "climate", f"{DOMAIN}_{SERIAL}"))
     assert climate.state == STATE_UNAVAILABLE
-    online = hass.states.get(_entity_id(hass, "binary_sensor", f"{DOMAIN}_{DEVICE_ID}_online"))
+    online = hass.states.get(_entity_id(hass, "binary_sensor", f"{DOMAIN}_{SERIAL}_online"))
     assert online.state == "off"
 
 
@@ -84,7 +84,7 @@ async def test_next_schedule_change_sensor(
 ) -> None:
     await _setup(hass, config_entry)
 
-    state = hass.states.get(_entity_id(hass, "sensor", f"{DOMAIN}_{DEVICE_ID}_next_schedule_change"))
+    state = hass.states.get(_entity_id(hass, "sensor", f"{DOMAIN}_{SERIAL}_next_schedule_change"))
     assert datetime.fromisoformat(state.state) == datetime.fromisoformat("2026-10-12T01:00:00+00:00")
     assert state.attributes["title"] == "Overnight"
     assert state.attributes["temperature"] == 62
@@ -96,7 +96,7 @@ async def test_next_schedule_change_empty_when_schedule_inactive(
     mock_client.get_device_state.return_value = {**DEVICE_STATE, "is_schedule_active": False}
     await _setup(hass, config_entry)
 
-    state = hass.states.get(_entity_id(hass, "sensor", f"{DOMAIN}_{DEVICE_ID}_next_schedule_change"))
+    state = hass.states.get(_entity_id(hass, "sensor", f"{DOMAIN}_{SERIAL}_next_schedule_change"))
     assert state.state == "unknown"
 
 
@@ -106,7 +106,7 @@ async def test_schedule_calendar(
     """The calendar shows the period in progress and lists the week's events."""
     freezer.move_to("2026-10-12T12:00:00-04:00")  # Monday noon in Toronto
     await _setup(hass, config_entry)
-    entity_id = _entity_id(hass, "calendar", f"{DOMAIN}_{DEVICE_ID}_schedule_calendar")
+    entity_id = _entity_id(hass, "calendar", f"{DOMAIN}_{SERIAL}_schedule_calendar")
 
     state = hass.states.get(entity_id)
     assert state.state == "on"  # Sunday's overnight setpoint is still in effect
