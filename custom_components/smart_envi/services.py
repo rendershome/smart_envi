@@ -35,10 +35,16 @@ def _get_device_id_from_entity(hass: HomeAssistant, entity_id: str) -> str | Non
         registry = entity_registry.async_get(hass)
         if registry_entry := registry.async_get(entity_id):
             unique_id = registry_entry.unique_id
-            # Extract device_id from unique_id (format: "smart_envi_{device_id}")
-            if unique_id.startswith(f"{DOMAIN}_"):
-                return unique_id.replace(f"{DOMAIN}_", "", 1)
-            return unique_id
+            # Extract the heater key from unique_id (format: "smart_envi_{key}")
+            key = unique_id.removeprefix(f"{DOMAIN}_")
+            # The key is the heater's serial; API calls need its current Envi id
+            for name, coordinator in hass.data.get(DOMAIN, {}).items():
+                if not name.startswith(f"{DOMAIN}_coordinator_"):
+                    continue
+                for device_id in coordinator.device_ids:
+                    if coordinator.device_key(device_id) == key:
+                        return device_id
+            return key
     except Exception as e:
         _LOGGER.debug("Failed to get device_id from entity registry: %s", e)
     
