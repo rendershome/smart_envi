@@ -77,8 +77,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         refreshed_count = 0
         failed_count = 0
         
-        for entry_id in hass.data.get(DOMAIN, {}):
-            if entry_id == "services_setup":
+        for entry_id, entry_client in hass.data.get(DOMAIN, {}).items():
+            # The domain data also holds coordinators and the services flag
+            if not isinstance(entry_client, EnviApiClient):
                 continue
             try:
                 coordinator_key = f"{DOMAIN}_coordinator_{entry_id}"

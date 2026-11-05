@@ -213,3 +213,19 @@ async def test_services_resolve_serial_keyed_entities(
 
     entity_id = er.async_get(hass).async_get_entity_id("climate", DOMAIN, f"{DOMAIN}_{SERIAL}")
     assert _get_device_id_from_entity(hass, entity_id) == DEVICE_ID
+
+
+async def test_refresh_all_only_refreshes_real_entries(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry, caplog
+) -> None:
+    """refresh_all refreshes each account without tripping over the coordinator key."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    mock_client.get_device_state.reset_mock()
+
+    await hass.services.async_call(DOMAIN, "refresh_all", blocking=True)
+    await hass.async_block_till_done()
+
+    mock_client.get_device_state.assert_called_once_with(DEVICE_ID)
+    assert "Failed to refresh heaters" not in caplog.text
