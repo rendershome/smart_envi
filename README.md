@@ -72,7 +72,7 @@ See the [full documentation](custom_components/smart_envi/README.md) for detaile
 
 ## Requirements
 
-- Home Assistant 2024.11 or later
+- Home Assistant 2026.11 or later
 - Envi account with active heaters
 - Internet connection
 

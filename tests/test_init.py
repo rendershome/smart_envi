@@ -192,7 +192,7 @@ async def test_only_heaters_gone_from_account_can_be_deleted(
     await hass.async_block_till_done()
 
     dev_reg = dr.async_get(hass)
-    live = dev_reg.async_get_device(identifiers={(DOMAIN, SERIAL)})
+    live = dev_reg.async_get_device_by_identifier((DOMAIN, SERIAL), config_entry.entry_id)
     stale = dev_reg.async_get_or_create(
         config_entry_id=config_entry.entry_id, identifiers={(DOMAIN, "OTHER-SERIAL")}
     )
