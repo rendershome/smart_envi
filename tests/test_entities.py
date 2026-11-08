@@ -53,6 +53,27 @@ async def test_celsius_heater_reports_native_unit(
     assert state.attributes["max_temp"] == 30
 
 
+async def test_fahrenheit_heater_converts_to_display_unit(
+    hass: HomeAssistant, mock_client: AsyncMock, config_entry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Core's temperature_unit attribute matches the converted values shown."""
+    hass.config.units = METRIC_SYSTEM
+    mock_client.get_device_state.return_value = {
+        **DEVICE_STATE,
+        "temperature_unit": "F",
+        "ambient_temperature": 68,
+        "current_temperature": 77,
+    }
+    await _setup(hass, config_entry)
+
+    state = hass.states.get(_entity_id(hass, "climate", f"{DOMAIN}_{SERIAL}"))
+    assert state.attributes["current_temperature"] == 20
+    assert state.attributes["temperature"] == 25
+    assert state.attributes["temperature_unit"] == "°C"
+    assert state.attributes["device_temperature_unit"] == "F"
+    assert "deprecated" not in caplog.text
+
+
 async def test_celsius_heater_set_temperature_sends_whole_degrees(
     hass: HomeAssistant, celsius_heater: AsyncMock, config_entry
 ) -> None:

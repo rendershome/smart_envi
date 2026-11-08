@@ -107,7 +107,7 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         temp_unit = data.get("temperature_unit", "F").upper()
         self._temperature_unit_api = temp_unit
         
-        # Temperatures are in the heater's own unit (see temperature_unit)
+        # Temperatures are in the heater's own unit (see native_temperature_unit)
         self._current_temperature = data.get("ambient_temperature")
         self._target_temperature = data.get("current_temperature")
         
@@ -150,7 +150,9 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
             "serial_number": data.get("serial_no"),
             "mode": MODE_MAP.get(data.get("current_mode"), f"Mode {data.get('current_mode')}"),
             "mode_number": data.get("current_mode"),
-            "temperature_unit": data.get("temperature_unit", "F"),
+            # Not "temperature_unit": Home Assistant sets that attribute to the
+            # unit the values are shown in, and this would overwrite it.
+            "device_temperature_unit": data.get("temperature_unit", "F"),
             "schedule_active": data.get("is_schedule_active", False),
             "schedule_name": schedule_name,
             "schedule_temperature": schedule_temp,
@@ -200,7 +202,7 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         )
 
     @property
-    def temperature_unit(self) -> str:
+    def native_temperature_unit(self) -> str:
         """Return the heater's own temperature unit."""
         if self._temperature_unit_api == "C":
             return UnitOfTemperature.CELSIUS
@@ -217,13 +219,13 @@ class EnviHeater(CoordinatorEntity, ClimateEntity):
         return MAX_TEMPERATURE_C if self._temperature_unit_api == "C" else MAX_TEMPERATURE
 
     @property
-    def current_temperature(self) -> float | None:
-        """Return current temperature."""
+    def native_current_temperature(self) -> float | None:
+        """Return current temperature in the heater's own unit."""
         return self._current_temperature
 
     @property
-    def target_temperature(self) -> float | None:
-        """Return target temperature."""
+    def native_target_temperature(self) -> float | None:
+        """Return target temperature in the heater's own unit."""
         return self._target_temperature
 
     @property
