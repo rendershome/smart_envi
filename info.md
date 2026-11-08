@@ -51,7 +51,7 @@ For each heater:
 
 ## Requirements
 
-- Home Assistant 2023.1 or later
+- Home Assistant 2026.11 or later
 - Envi account with active heaters
 - Internet connection
 
