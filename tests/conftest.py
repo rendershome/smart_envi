@@ -46,6 +46,8 @@ DEVICE_STATE = {
 }
 
 # Shaped like a real schedule/list entry: weekdays and weekends as two groups.
+# Envi returns setpoints in °C (rounded to two decimals) even when the schedule
+# and heater are set to °F: 20 = 68°F, 16.67 = 62°F.
 SCHEDULE = {
     "id": 777,
     "name": "Main Floor",
@@ -57,8 +59,8 @@ SCHEDULE = {
             "saturday": False,
             "sunday": False,
             "events": [
-                {"local_time": "19:00", "heat_to": 68, "cool_to": 68, "temperature": 0, "title": "Evenings"},
-                {"local_time": "21:00", "heat_to": 62, "cool_to": 62, "temperature": 0, "title": "Overnight"},
+                {"local_time": "19:00", "heat_to": 20, "cool_to": 20, "temperature": 0, "title": "Evenings"},
+                {"local_time": "21:00", "heat_to": 16.67, "cool_to": 16.67, "temperature": 0, "title": "Overnight"},
             ],
         },
         {
@@ -66,8 +68,8 @@ SCHEDULE = {
             "saturday": True,
             "sunday": True,
             "events": [
-                {"local_time": "07:00", "heat_to": 68, "cool_to": 68, "temperature": 0, "title": "Morning"},
-                {"local_time": "21:00", "heat_to": 62, "cool_to": 62, "temperature": 0, "title": "Overnight"},
+                {"local_time": "07:00", "heat_to": 20, "cool_to": 20, "temperature": 0, "title": "Morning"},
+                {"local_time": "21:00", "heat_to": 16.67, "cool_to": 16.67, "temperature": 0, "title": "Overnight"},
             ],
         },
     ],

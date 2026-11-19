@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.smart_envi.api import EnviAuthenticationError
@@ -163,6 +164,7 @@ async def test_options_schedule_viewer(
     hass: HomeAssistant, mock_client: AsyncMock, config_entry
 ) -> None:
     """Schedules can be viewed (all day groups, heaters using them) but not changed."""
+    hass.config.units = US_CUSTOMARY_SYSTEM
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()

@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.util.unit_system import METRIC_SYSTEM
+from homeassistant.util.unit_system import (
+    METRIC_SYSTEM,
+    US_CUSTOMARY_SYSTEM,
+    UnitSystem,
+)
 import pytest
 
 from custom_components.smart_envi.const import DOMAIN
@@ -121,17 +125,32 @@ async def test_next_schedule_change_empty_when_schedule_inactive(
     assert state.state == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("units", "overnight", "evenings"),
+    [(US_CUSTOMARY_SYSTEM, "62°F", "68°F"), (METRIC_SYSTEM, "16.7°C", "20°C")],
+)
 async def test_schedule_calendar(
-    hass: HomeAssistant, mock_client: AsyncMock, config_entry, freezer
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    config_entry,
+    freezer,
+    units: UnitSystem,
+    overnight: str,
+    evenings: str,
 ) -> None:
-    """The calendar shows the period in progress and lists the week's events."""
+    """The calendar lists the week's events, in the unit Home Assistant displays.
+
+    Envi's setpoints are °C even for a °F heater; they used to be shown as-is
+    with the heater's unit, e.g. "Overnight · 16.67°F" for 62°F.
+    """
+    hass.config.units = units
     freezer.move_to("2026-10-12T12:00:00-04:00")  # Monday noon in Toronto
     await _setup(hass, config_entry)
     entity_id = _entity_id(hass, "calendar", f"{DOMAIN}_{SERIAL}_schedule_calendar")
 
     state = hass.states.get(entity_id)
     assert state.state == "on"  # Sunday's overnight setpoint is still in effect
-    assert state.attributes["message"] == "Overnight · 62°F"
+    assert state.attributes["message"] == f"Overnight · {overnight}"
     assert state.attributes["schedule_name"] == "Main Floor"
 
     response = await hass.services.async_call(
@@ -147,9 +166,9 @@ async def test_schedule_calendar(
     )
     events = response[entity_id]["events"]
     assert [(e["summary"], e["start"], e["end"]) for e in events] == [
-        ("Overnight · 62°F", "2026-10-11T21:00:00-04:00", "2026-10-12T19:00:00-04:00"),
-        ("Evenings · 68°F", "2026-10-12T19:00:00-04:00", "2026-10-12T21:00:00-04:00"),
-        ("Overnight · 62°F", "2026-10-12T21:00:00-04:00", "2026-10-13T19:00:00-04:00"),
+        (f"Overnight · {overnight}", "2026-10-11T21:00:00-04:00", "2026-10-12T19:00:00-04:00"),
+        (f"Evenings · {evenings}", "2026-10-12T19:00:00-04:00", "2026-10-12T21:00:00-04:00"),
+        (f"Overnight · {overnight}", "2026-10-12T21:00:00-04:00", "2026-10-13T19:00:00-04:00"),
     ]
 
 
