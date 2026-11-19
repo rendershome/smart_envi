@@ -13,7 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import EnviDataUpdateCoordinator
-from .schedule import ScheduleEvent, events_between
+from .schedule import ScheduleEvent, events_between, format_temperature
 
 
 class EnviScheduleCalendar(CoordinatorEntity[EnviDataUpdateCoordinator], CalendarEntity):
@@ -55,9 +55,7 @@ class EnviScheduleCalendar(CoordinatorEntity[EnviDataUpdateCoordinator], Calenda
         schedule = self.coordinator.get_device_schedule(self.device_id)
         if not schedule:
             return []
-        unit = schedule.get("temperature_unit") or (
-            self.coordinator.get_device_data(self.device_id) or {}
-        ).get("temperature_unit", "")
+        unit = self.hass.config.units.temperature_unit
         return [
             self._to_calendar_event(e, schedule.get("name"), unit)
             for e in events_between(schedule, start, end, dt_util.get_default_time_zone())
@@ -67,11 +65,10 @@ class EnviScheduleCalendar(CoordinatorEntity[EnviDataUpdateCoordinator], Calenda
     def _to_calendar_event(
         event: ScheduleEvent, schedule_name: str | None, unit: str
     ) -> CalendarEvent:
-        temperature = f"{event.temperature:g}°{unit}".rstrip("°")
         return CalendarEvent(
             start=event.start,
             end=event.end,
-            summary=f"{event.title} · {temperature}",
+            summary=f"{event.title} · {format_temperature(event.temperature, unit)}",
             description=f"Schedule: {schedule_name}" if schedule_name else None,
         )
 

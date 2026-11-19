@@ -4,7 +4,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
 
-from custom_components.smart_envi.schedule import events_between, weekly_events
+from homeassistant.const import UnitOfTemperature
+import pytest
+
+from custom_components.smart_envi.schedule import (
+    events_between,
+    format_temperature,
+    weekly_events,
+)
 
 from .conftest import SCHEDULE
 
@@ -20,20 +27,20 @@ def test_weekly_events_flatten_groups() -> None:
     events = weekly_events(SCHEDULE)
     assert len(events) == 14
     assert [(e.weekday, e.start, e.title, e.temperature) for e in events[:2]] == [
-        (0, time(19, 0), "Evenings", 68.0),
-        (0, time(21, 0), "Overnight", 62.0),
+        (0, time(19, 0), "Evenings", 20.0),
+        (0, time(21, 0), "Overnight", 16.67),
     ]
     # Uses heat_to, not the always-zero "temperature" field
-    assert all(e.temperature in (62.0, 68.0) for e in events)
+    assert all(e.temperature in (16.67, 20.0) for e in events)
 
 
 def test_events_on_a_weekday() -> None:
     """Monday 12 Oct 2026: Sunday's overnight runs into Monday evening."""
     events = events_between(SCHEDULE, _local(2026, 10, 12), _local(2026, 10, 13), UTC)
     assert [(e.title, e.start, e.end, e.temperature) for e in events] == [
-        ("Overnight", _local(2026, 10, 11, 21), _local(2026, 10, 12, 19), 62.0),
-        ("Evenings", _local(2026, 10, 12, 19), _local(2026, 10, 12, 21), 68.0),
-        ("Overnight", _local(2026, 10, 12, 21), _local(2026, 10, 13, 19), 62.0),
+        ("Overnight", _local(2026, 10, 11, 21), _local(2026, 10, 12, 19), 16.67),
+        ("Evenings", _local(2026, 10, 12, 19), _local(2026, 10, 12, 21), 20.0),
+        ("Overnight", _local(2026, 10, 12, 21), _local(2026, 10, 13, 19), 16.67),
     ]
 
 
@@ -68,3 +75,18 @@ def test_empty_or_malformed_schedule() -> None:
     start, end = _local(2026, 10, 12), _local(2026, 10, 13)
     assert events_between({}, start, end, UTC) == []
     assert events_between({"schedule_data": [{"monday": True, "events": [{"title": "x"}]}]}, start, end, UTC) == []
+
+
+@pytest.mark.parametrize(
+    ("celsius", "unit", "expected"),
+    [
+        (18.89, UnitOfTemperature.FAHRENHEIT, "66°F"),
+        (14.44, UnitOfTemperature.FAHRENHEIT, "58°F"),
+        (20, UnitOfTemperature.FAHRENHEIT, "68°F"),
+        (18.89, UnitOfTemperature.CELSIUS, "18.9°C"),
+        (20, UnitOfTemperature.CELSIUS, "20°C"),
+    ],
+)
+def test_format_temperature(celsius: float, unit: str, expected: str) -> None:
+    """Setpoints come from Envi in °C and are shown in the display unit."""
+    assert format_temperature(celsius, unit) == expected

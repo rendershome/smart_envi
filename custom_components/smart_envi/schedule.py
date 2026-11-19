@@ -21,12 +21,19 @@ An Envi schedule (from schedule/list) looks like:
 
 Each event sets a target temperature that holds until the next event, so an
 event's end is the start of the next one in the weekly cycle.
+
+Setpoints (``heat_to``) are in °C, rounded to two decimals, even when the
+schedule's or heater's ``temperature_unit`` is "F": a 66°F setpoint comes back
+as 18.89. Convert them before showing them.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from homeassistant.const import UnitOfTemperature
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -38,7 +45,7 @@ class WeeklyEvent:
     weekday: int  # 0 = Monday
     start: time
     title: str
-    temperature: float
+    temperature: float  # °C
 
 
 @dataclass(frozen=True)
@@ -48,7 +55,13 @@ class ScheduleEvent:
     start: datetime
     end: datetime
     title: str
-    temperature: float
+    temperature: float  # °C
+
+
+def format_temperature(celsius: float, unit: str) -> str:
+    """Format a schedule setpoint (°C) in the given display unit, e.g. "62°F"."""
+    value = TemperatureConverter.convert(celsius, UnitOfTemperature.CELSIUS, unit)
+    return f"{round(value, 1):g}{unit}"
 
 
 def schedule_timezone(schedule: dict, default: tzinfo) -> tzinfo:

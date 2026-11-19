@@ -22,7 +22,7 @@ from .const import (
     MIN_API_TIMEOUT,
     MIN_SCAN_INTERVAL,
 )
-from .schedule import WEEKDAYS
+from .schedule import WEEKDAYS, format_temperature
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={
                 "schedule_name": schedule.get("name") or "Unnamed",
                 "heaters": ", ".join(heaters) or "none",
-                "schedule": format_schedule(schedule),
+                "schedule": format_schedule(schedule, self.hass.config.units.temperature_unit),
             },
         )
 
@@ -294,9 +294,8 @@ class EnviHeaterOptionsFlowHandler(config_entries.OptionsFlow):
         return result
 
 
-def format_schedule(schedule: dict) -> str:
-    """Render a schedule's day groups and events as Markdown."""
-    unit = schedule.get("temperature_unit") or ""
+def format_schedule(schedule: dict, unit: str) -> str:
+    """Render a schedule's day groups and events as Markdown, in the given unit."""
     lines: list[str] = []
     for group in schedule.get("schedule_data") or []:
         if not isinstance(group, dict):
@@ -314,7 +313,7 @@ def format_schedule(schedule: dict) -> str:
             if temperature is None:
                 temperature = event.get("temperature")
             if isinstance(temperature, (int, float)):
-                temperature = f"{temperature:g}°{unit}"
+                temperature = format_temperature(temperature, unit)
             title = event.get("title") or "Scheduled change"
             lines.append(f"- {event.get('local_time', '?')}  {title}: {temperature}")
         lines.append("")
